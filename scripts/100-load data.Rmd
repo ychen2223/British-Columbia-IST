@@ -1,0 +1,64 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(here)
+library(fs)
+library(readxl)
+
+source(here("scripts", "set_vars.R"))
+```
+
+```{r}
+ctry_data <- read_csv(path(path_te_shared, path_raw_data,"50_countries.csv")) %>%
+  janitor::clean_names()
+reg_data <- read_csv(path(path_te_shared, path_raw_data,"region.csv")) %>%
+  janitor::clean_names()
+us_data <- read_csv(path(path_te_shared, path_raw_data,"US.csv")) %>%
+  janitor::clean_names()
+```
+
+```{r}
+ctry_data2 <- ctry_data %>%
+  select(ref_date, geo, country_of_residence, traveller_type, value)
+
+reg_data2 <- reg_data %>%
+  select(ref_date, geo, country_of_residence, traveller_type, value)
+
+us_data2 <- us_data %>%
+  select(ref_date, geo, country_of_residence, traveller_type, value)
+```
+
+```{r}
+ctry_data3 <- ctry_data2 %>%
+  tidyr::complete(ref_date, geo, country_of_residence, traveller_type, fill = list(value = 0)) %>%
+  mutate(year = as.numeric(substr(ref_date, 1, 4)), .after = ref_date)
+
+reg_data3 <- reg_data2 %>%
+  tidyr::complete(ref_date, geo, country_of_residence, traveller_type, fill = list(value = 0)) %>%
+  mutate(year = as.numeric(substr(ref_date, 1, 4)), .after = ref_date)
+
+us_data3 <- us_data2 %>%
+  tidyr::complete(ref_date, geo, country_of_residence, traveller_type, fill = list(value = 0)) %>%
+  mutate(year = as.numeric(substr(ref_date, 1, 4)), .after = ref_date)
+```
+
+```{r}
+colSums(is.na(ctry_data3))
+colSums(is.na(reg_data3))
+colSums(is.na(us_data3))
+```
+
+
+```{r}
+write_rds(ctry_data3, here("output_data", "ctry_data3.rds"))
+write_rds(reg_data3, here("output_data", "reg_data3.rds"))
+write_rds(us_data3, here("output_data", "us_data3.rds"))
+```
+

@@ -1,0 +1,10 @@
+install.packages("knitr")
+install.packages("readxl")
+install.packages("here")
+install.packages("tidyverse")
+install.packages("tidycensus")
+install.packages("janitor")
+#install.packages("arrow")
+
+install.packages("devtools")
+devtools::install_github("TourismEconomics/teref")

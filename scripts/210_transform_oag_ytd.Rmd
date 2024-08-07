@@ -1,0 +1,185 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(here)
+library(fs)
+library(readxl)
+
+source(here("scripts", "set_vars.R"))
+
+data_oag_1 <- read_rds(here("output_data", "data_oag_1.rds"))
+oag_ctry_name <- read_csv(here("input_data", "oag_ctry_name.csv"))
+city_state_list <- read_csv(here("input_data", "city_state_list.csv"))
+reg_code <- read_csv(here("input_data", "reg_code.csv"))
+gct_city_code <- read_csv(here("input_data", "gct_city_code.csv"))
+```
+
+
+```{r}
+colSums(is.na(data_oag_1))
+```
+
+```{r}
+# mod_frame_oag <- apply(subset(data_oag_1, select = -c(total_est_pax, mean_dist_to_country_from_airport)), 2 , table)
+# print(mod_frame_oag)
+```
+
+
+
+#pax to 50 GCT cities from each country in 2019 and 2024
+#oag has no data for riverside, so it's only 49 cities now, including two New York
+```{r}
+cities <- c("Atlanta", "Austin (US) TX", "Baltimore", "Boston", "Buffalo", "Charlotte", "Chicago", "Cincinnati", "Cleveland", "Columbus (US) OH", "Dallas", "Denver", "Detroit", "El Paso", "Honolulu", "Houston", "Indianapolis", "Jacksonville (US) FL", "Kansas City", "Las Vegas (US) NV", "Los Angeles (US) CA", "Louisville", "Memphis", "Miami", "Milwaukee", "Minneapolis/St Paul", "Nashville", "New Orleans", "New York", "Oklahoma City", "Orlando", "Philadelphia", "Phoenix", "Pittsburgh", "Portland", "Providence", "Richmond (US) VA", "Riverside", "Sacramento", "Salt Lake City", "San Antonio (US) TX", "San Diego", "San Francisco", "San Jose (US) CA", "Seattle", "St Louis (US) MO", "Tampa", "Tucson", "Norfolk (US) VA", "Washington (US) DC")
+```
+
+#There're two NYC in this dataset, it's bc Michael changed Newark airport arr state code to NJ instead of NY. I'll ignore the different state code for NYC for now
+```{r}
+check1 <- data_oag_1 %>%
+  filter(arr_city_name %in% cities) %>%
+  select(arr_city_name, arr_state_code) %>%
+  distinct()
+```
+
+
+```{r}
+start_date = as.Date(min(data_oag_1$time_series))
+end_date = as.Date(max(data_oag_1$time_series))
+```
+
+
+#fill in data gaps by date place value 0, convert 0 to NA
+```{r}
+data_oag_2 <- data_oag_1 %>%
+  mutate(dep_country_name = recode(dep_country_name, Turkiye = "Turkey")) %>%
+  filter(dep_country_name %in% oag_ctry_name$dep_country_name) %>%
+  select(time_series, dep_country_name, arr_city_name, total_est_pax) %>%
+  complete(time_series = seq.Date(start_date, end_date, by = "months"), dep_country_name, arr_city_name, fill = list(total_est_pax = 0)) %>%
+  arrange(time_series) %>%
+  mutate(across(where(is.numeric), ~na_if(., 0)))
+```
+
+```{r}
+data_oag_3 <- data_oag_2 %>%
+  left_join(city_state_list, by = c("arr_city_name"))
+```
+
+
+#latest data for 2024 is May, so we keep Jan-May 2019
+```{r}
+ytd1 <- data_oag_3 %>%
+  filter(arr_city_name %in% cities) %>%
+  mutate(year = as.numeric(format(time_series,'%Y'))) %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  mutate(month = month(time_series)) %>%
+  filter(month <= max(month(time_series)[year == 2024])) %>%
+  select(-c(year, month, time_series))
+```
+
+#filter data in 2019 and 2024
+```{r}
+ytd2 <- ytd1 %>%
+  filter(date %in% c("2019-01-01", "2024-01-01")) %>%
+  group_by(arr_city_name, dep_country_name, date) %>%
+  mutate(ytd_city_tot = sum(total_est_pax, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(arr_state_name, dep_country_name, date) %>%
+  mutate(ytd_state_tot = sum(total_est_pax, na.rm = TRUE)) %>%
+  ungroup() %>%
+  distinct(dep_country_name, arr_city_name, date, .keep_all = TRUE) %>%
+  select(-c(total_est_pax))
+```
+
+```{r}
+ytd3 <- ytd2 %>%
+  group_by(arr_city_name, dep_country_name) %>%
+  mutate(rel_19_city = (ytd_city_tot/ytd_city_tot[date == "2019-01-01"])) %>%
+  ungroup()%>%
+  group_by(arr_state_name, dep_country_name) %>%
+  mutate(rel_19_state = (ytd_state_tot/ytd_state_tot[date == "2019-01-01"])) %>%
+  ungroup()%>%
+  filter(date == "2024-01-01")
+```
+
+
+#calculate OAG YTD estimate
+```{r}
+city_weight = 0.7
+state_weight = 0.3
+```
+
+```{r}
+ytd4 <- ytd3 %>%
+  mutate(ytd_est = ifelse(is.na(rel_19_state), rel_19_city, city_weight * rel_19_city + state_weight * rel_19_state))
+```
+
+```{r}
+df1 <- ytd4 %>%
+  select(dep_country_name, arr_state_name, arr_city_name, date, ytd_est) %>%
+  filter(ytd_est != 0 & !is.infinite(ytd_est)) %>%
+  drop_na()
+```
+
+```{r}
+df2 <- df1 %>%
+  left_join(reg_code, by = c("dep_country_name")) %>%
+  left_join(gct_city_code, by = c("arr_city_name")) %>%
+  select(reg_code, gct_city_code, dep_country_name, arr_state_name, arr_city_name, ytd_est)
+```
+
+
+
+
+###city_agg_oag_ytd
+```{r}
+city_agg_1 <- ytd1 %>%
+  filter(date %in% c("2019-01-01", "2024-01-01")) %>%
+  group_by(arr_city_name, date) %>%
+  mutate(ytd_city_agg = sum(total_est_pax, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(arr_state_name, date) %>%
+  mutate(ytd_state_agg = sum(total_est_pax, na.rm = TRUE)) %>%
+  ungroup() %>%
+  distinct(arr_city_name, date, ytd_city_agg, ytd_state_agg, .keep_all = TRUE) %>%
+  select(-c(total_est_pax, dep_country_name, arr_state_name))
+```
+
+```{r}
+city_agg_oag_ytd <- city_agg_1 %>%
+  group_by(arr_city_name) %>%
+  mutate(rel_19_city = (ytd_city_agg/ytd_city_agg[date == "2019-01-01"])) %>%
+  mutate(rel_19_state = (ytd_state_agg/ytd_state_agg[date == "2019-01-01"])) %>%
+  ungroup() %>%
+  filter(date == "2024-01-01")
+```
+
+```{r}
+#calculate OAG YTD estimate
+city_weight = 0.7
+state_weight = 0.3
+
+city_agg_oag_ytd2 <- city_agg_oag_ytd %>% 
+  mutate(ytd_est = ifelse(is.na(rel_19_state), rel_19_city, city_weight * rel_19_city + state_weight * rel_19_state)) %>% 
+  select(arr_city_name, ytd_est)
+
+city_agg_oag_ytd3 <- city_agg_oag_ytd2 |> 
+  left_join(gct_city_code, by = "arr_city_name") %>%
+  relocate(gct_city_code)
+```
+
+
+```{r}
+oag_ytd_est <- df2
+```
+
+```{r}
+write_csv(oag_ytd_est, path("C:/Users/Yixin Chen/Oxford Economics/Cloud Drive - TE Shared/TE subscription databases/GCT/2024-07 update/001 ytd/oag_input", "oag_ytd_est.csv"))
+write_csv(city_agg_oag_ytd3, path("C:/Users/Yixin Chen/Oxford Economics/Cloud Drive - TE Shared/TE subscription databases/GCT/2024-07 update/001 ytd/oag_input", "city_agg_oag_ytd.csv"))
+```
+
