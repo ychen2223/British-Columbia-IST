@@ -1,0 +1,274 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(here)
+library(fs)
+library(readxl)
+
+source(here("scripts", "set_vars.R"))
+```
+
+```{r}
+gts_current_ctry_NES <- read_rds(here("output_data", "gts_current_ctry_NES.rds")) #current gts for Canada
+ctry_tour <- read_rds(here("output_data", "ctry_tour.rds"))
+reg_tour <- read_rds(here("output_data", "reg_tour.rds"))
+
+reg_def <- read_rds(here("output_data", "reg_def.rds"))
+
+non_us_data3 <- read_rds(here("output_data", "non_us_data3.rds"))
+```
+
+```{r}
+gts_v <- gts_current_ctry_NES %>%
+  filter(variable == "v" ) %>%
+  mutate(value = 1000*value)
+
+```
+
+
+```{r}
+can_ctry_visit <- ctry_tour %>%
+  filter(geo == "Canada") %>%
+  left_join(select(gts_v, orig_code, date, gts_v = value), by = c("orig_code", "date")) %>%
+  mutate(ratio = value/gts_v)
+
+#2022 and before all align with gts visits
+test <- can_ctry_visit %>%
+  filter(date <= "2022-01-01")
+
+#to lower gts future to match stat_can 2023 level
+ratio_2023 <- can_ctry_visit %>%
+  filter(date == "2023-01-01") %>%
+  select(orig_code, ratio)
+```
+
+#see if sum of provinces is the same as total Canada
+#some are not really equal to total Canada
+```{r}
+test1 <- ctry_tour %>%
+  filter(geo != "Canada") %>%
+  group_by(orig_code, date) %>%
+  summarise(sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(select(can_ctry_visit, orig_code, date, can_v = value), by = c("orig_code", "date")) %>%
+  mutate(gap = sum-can_v) %>%
+  mutate(geo = "Canada")
+```
+
+#make history sum of states be Canada
+```{r}
+df1 <- ctry_tour %>%
+  left_join(select(test1, geo, date, orig_code, sum), by = c("geo", "date", "orig_code")) %>%
+  mutate(value = ifelse(is.na(sum), value, sum)) %>%
+  select(-c(sum)) %>%
+  tidyr::complete(geo, date, orig_code, fill = list(value = 0))
+
+colSums(is.na(df1))
+```
+#calculate province share of Canada for each country
+```{r}
+pro_share <- df1 %>%
+  filter(date == "2019-01-01" | date == "2023-01-01") %>%
+  group_by(orig_code, geo) %>%
+  summarise(value = sum(value, .na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  group_by(orig_code) %>%
+  mutate(share = value / value[geo == "Canada"]) %>%
+  ungroup()
+```
+
+#complete the date
+```{r}
+df2 <- df1 %>%
+  select(geo, date, orig_code, country_of_residence, low_lev_reg, traveller_type) %>%
+  complete(nesting(geo, orig_code, country_of_residence, low_lev_reg, traveller_type), date = seq.Date(from=as.Date("2008-01-01"), to=as.Date("2034-01-01"), by="year"))
+```
+
+#construct country final dataframe
+```{r}
+df3 <- df2 %>%
+  left_join(df1, by = c("geo", "date", "orig_code", "country_of_residence", "low_lev_reg", "traveller_type")) %>%  #history
+  left_join(select(gts_v, date, orig_code, gts_v = value), by = c("date", "orig_code")) %>%
+  left_join(ratio_2023, by = c("orig_code")) %>%
+  left_join(select(pro_share, orig_code, geo, share), by = c("orig_code", "geo")) %>%
+  mutate(value = case_when(date <= "2023-01-01" ~ value,
+                           date >= "2024-01-01" ~ gts_v * ratio * share)) %>%
+  select(-c(gts_v, ratio, share))
+
+colSums(is.na(df3))
+```
+
+#Apply gts growth rate on statcan region
+```{r}
+ctry_def2 <- data.frame(orig_code= c("GRL", "MEX", "SPM", "BLZ", "CRI", "SLV", "GTM", "HND", "NIC", "PAN", "AIA", "ATG", "ABW", "BHS", "BRB", "BMU", "BES", "CYM", "CUB", "CUW", "DMA", "DOM", "GRD", "GLP", "HTI", "JAM", "MTQ", "MSR", "ANT", "PRI", "BLM", "KNA", "LCA", "MAF", "VCT", "SXM", "TTO", "TCA", "VGB", "VIR", "ARG", "BOL", "BRA", "CHL", "COL", "ECU", "FLK", "GUF", "GUY", "PRY", "PER", "SGS", "SUR", "URY", "VEN", "AUT", "BEL", "FRA", "DEU", "LIE", "LUX", "MCO", "NLD", "CHE", "ARM", "AZE", "BLR", "BGR", "CZE", "EST", "GEO", "HUN", "KAZ", "KGZ", "LVA", "LTU", "MDA", "POL", "ROU", "RUS", "SVK", "TJK", "TKM", "UKR", "UZB", "ALA", "DNK", "FRO", "FIN", "GGY", "ISL", "IRL", "IMN", "JEY", "NOR", "", "SJM", "SWE", "GBR", "ALB", "AND", "BIH", "HRV", "GIB", "GRC", "VAT", "ITA", "", "MLT", "MNE", "MKD", "PRT", "SMR", "SRB", "SVN", "ESP", "CYP", "ISR", "TUR", "BEN", "BFA", "CPV", "CIV", "GMB", "GHA", "GIN", "GNB", "LBR", 
+                                     "MLI", "MRT", "NER", "NGA", "SHN", "SEN", "SLE", "TGO", "IOT", "BDI", "COM", "DJI", "ERI", "ETH", "KEN", "MDG", "MWI", "MUS", "MYT", "MOZ", "REU", "RWA", "SYC", "SOM", "TZA", "UGA", "ZMB", "ZWE", "DZA", "MAR", "SSD", "SDN", "TUN", "ESH", "AGO", "CMR", "CAF", "TCD", "COD", "COG", "GNQ", "GAB", "STP", "BWA", "SWZ", "LSO", "NAM", "ZAF", "BHR", "EGY", "IRQ", "JOR", "KWT", "LBN", "LBY", "OMN", "QAT", "SAU", "SYR", "ARE", "", "YEM", "CHN", "HKG", "JPN", "PRK", "KOR", "MAC", "MNG", "TWN", "BRN", "KHM", "IDN", "LAO", "MYS", "MMR", "PHL", "SGP", "THA", "TLS", "VNM", "AFG", "BGD", "BTN", "IND", "IRN", "MDV", "NPL", "PAK", "LKA", "AUS", "NZL", "FJI", "NCL", "NFK", "PNG", "SLB", "VUT", "CXR", 
+                                     "CCK", "GUM", "KIR", "MHL", "FSM", "NRU", "MNP", "PLW", "UMI", "ASM", "COK", "PYF", "NIU", "PCN", "WSM", "TKL", "TON", "TUV", "WLF", "ATA", "BVT", "ATF", "HMD"),
+                       low_lev_reg=c("North America, countries other than the United States of America", "North America, countries other than the United States of America", "North America, countries other than the United States of America", "Central America", "Central America", "Central America", "Central America", "Central America", "Central America", "Central America", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", 
+                                     "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "South America", "South America", "South America", "South America", "South America", "South America", "South America", "South America", "South America", "South America", "South America", 
+                                     "South America", "South America", "South America", "South America", "Western Europe", "Western Europe", "Western Europe", "Western Europe", "Western Europe", "Western Europe", "Western Europe", "Western Europe", "Western Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", 
+                                     "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Central/Eastern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Northern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", 
+                                     "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "Southern Europe", "East Mediterranean Europe", "East Mediterranean Europe", "East Mediterranean Europe", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Western Africa", "Eastern Africa", "Eastern Africa", 
+                                     "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Eastern Africa", "Northern Africa", "Northern Africa", "Northern Africa", "Northern Africa", "Northern Africa", "Northern Africa", "Central Africa", 
+                                     "Central Africa", "Central Africa", "Central Africa", "Central Africa", "Central Africa", "Central Africa", "Central Africa", "Central Africa", "Southern Africa", "Southern Africa", "Southern Africa", "Southern Africa", "Southern Africa", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", "Middle East", 
+                                     "Northeast Asia", "Northeast Asia", "Northeast Asia", "Northeast Asia", "Northeast Asia", "Northeast Asia", "Northeast Asia", "Northeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southeast Asia", "Southern Asia", "Southern Asia", "Southern Asia", "Southern Asia", "Southern Asia", "Southern Asia", "Southern Asia", 
+                                     "Southern Asia", "Southern Asia", "Australasia", "Australasia", "Melanesia", "Melanesia", "Melanesia", "Melanesia", "Melanesia", "Melanesia", "Micronesia", "Micronesia", "Micronesia", "Micronesia", "Micronesia", "Micronesia", "Micronesia", "Micronesia", "Micronesia", "Micronesia", "Polynesia", "Polynesia", "Polynesia", "Polynesia", "Polynesia", "Polynesia", "Polynesia", "Polynesia", "Polynesia", "Polynesia", "Antarctica and Adjacent Islands Region", 
+                                     "Antarctica and Adjacent Islands Region", "Antarctica and Adjacent Islands Region", "Antarctica and Adjacent Islands Region"))
+```
+
+#Manually give Micronesia and Polynisia estimated growth
+#Manually add Antarctica
+```{r}
+gts_v_reg <- gts_v %>%
+  left_join(ctry_def2, by = c("orig_code")) %>%
+  group_by(date, low_lev_reg) %>%
+  summarise(sum_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  group_by(low_lev_reg) %>%
+  mutate(growth = sum_reg/sum_reg[date == "2023-01-01"]) %>%
+  ungroup()
+
+oce <- gts_v_reg %>%
+  filter((low_lev_reg == "Polynesia" | low_lev_reg == "Micronesia"| low_lev_reg == "Melanesia") & date >= "2024-01-01") %>%
+  group_by(date) %>%
+  mutate(growth_oce = growth[low_lev_reg == "Melanesia"]) %>%
+  ungroup() %>%
+  select(-c(sum_reg, growth))
+
+ata <- gts_v_reg %>%
+  filter(low_lev_reg == "Melanesia") %>%
+  mutate(low_lev_reg = "Antarctica and Adjacent Islands Region") %>%
+  select(-c(sum_reg))
+
+complete_growth <- gts_v_reg %>%
+  select(-c(sum_reg)) %>%
+  rbind(ata) %>%
+  left_join(oce, by = c("date", "low_lev_reg")) %>%
+  mutate(growth = ifelse(is.na(growth_oce), growth, growth_oce)) %>%
+  select(-c(growth_oce))
+```
+
+#complete the date
+```{r}
+df4 <- reg_tour %>%
+  tidyr::complete(geo, date, country_of_residence, fill = list(value = 0)) %>%
+  select(geo, date, country_of_residence, high_lev_reg, traveller_type) %>%
+  complete(nesting(geo, country_of_residence, high_lev_reg, traveller_type), date = seq.Date(from=as.Date("2008-01-01"), to=as.Date("2034-01-01"), by="year"))
+```
+
+#calculate future
+```{r}
+df5 <- df4 %>%
+  filter(!is.na(high_lev_reg)) %>%
+  left_join(select(reg_tour, geo, date, country_of_residence, value), by = c("geo", "date", "country_of_residence")) %>%
+  left_join(complete_growth, by = c("date", "country_of_residence" = "low_lev_reg")) %>%
+  group_by(geo, country_of_residence) %>%
+  mutate(value = case_when(date >= "2024-01-01" ~ value[date== "2023-01-01"] * growth,
+                           TRUE ~ value)) %>%
+  ungroup() %>%
+  mutate(value = ifelse(is.na(value), 0, value)) %>%
+  select(-c(growth))
+```
+
+```{r}
+df3_reg <- df3 %>%
+  filter(orig_code != "USA") %>%
+  group_by(geo, low_lev_reg, date) %>%
+  summarise(value_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup()
+```
+
+```{r}
+df5_rest <- df5 %>%
+  left_join(df3_reg, by = c("geo", "country_of_residence" = "low_lev_reg", "date")) %>%
+  mutate(value_reg = ifelse(is.na(value_reg),0,value_reg)) %>%
+  mutate(value_rest = value - value_reg) %>%
+  mutate(country_of_residence = paste0("Rest of ",country_of_residence)) %>%
+  select(-c(value, value_reg))
+```
+
+#calculate high level region
+```{r}
+df6 <- df5 %>%
+  group_by(geo, date, high_lev_reg, traveller_type) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup()
+```
+
+```{r}
+df6_rest <- df5_rest %>%
+  group_by(geo, date, high_lev_reg, traveller_type) %>%
+  summarise(value_rest = sum(value_rest, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(high_lev_reg = paste0("Rest of ",high_lev_reg))
+```
+
+#calculate "Residents of countries other than the United States of America entering Canada"
+```{r}
+df7 <- df6 %>%
+  group_by(geo, date, traveller_type) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Residents of countries other than the United States of America entering Canada", .after = date)
+```
+
+
+#compare if high level is the sum of low level in statcan
+#tiny different
+```{r}
+test2 <- reg_tour %>%
+  filter(is.na(high_lev_reg)) %>%
+  left_join(df6, by = c("geo", "date", "country_of_residence" = "high_lev_reg")) %>%
+  mutate(gap = value.x-value.y)
+```
+
+#compare if non US is the sum of high level in statcan
+#tiny different
+```{r}
+test3 <- non_us_data3 %>%
+  filter(year <= 2023) %>%
+  group_by(year, geo) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  left_join(df7, by = c("geo", "date")) %>%
+  mutate(gap = value.x-value.y)
+```
+
+
+```{r}
+ctry_v <- df3
+low_lev_reg_v <- df5
+low_lev_reg_v_rest <- df5_rest
+high_lev_reg_v <- df6
+high_lev_reg_v_rest <- df6_rest
+non_US_v <- df7
+
+colSums(is.na(ctry_v))
+colSums(is.na(low_lev_reg_v))
+colSums(is.na(high_lev_reg_v))
+colSums(is.na(low_lev_reg_v_rest))
+colSums(is.na(high_lev_reg_v_rest))
+colSums(is.na(non_US_v))
+
+write_rds(ctry_v, here("output_data", "ctry_v.rds"))
+write_rds(low_lev_reg_v, here("output_data", "low_lev_reg_v.rds"))
+write_rds(high_lev_reg_v, here("output_data", "high_lev_reg_v.rds"))
+write_rds(low_lev_reg_v_rest, here("output_data", "low_lev_reg_v_rest.rds"))
+write_rds(high_lev_reg_v_rest, here("output_data", "high_lev_reg_v_rest.rds"))
+write_rds(non_US_v, here("output_data", "non_US_v.rds"))
+
+write.csv(ctry_v, here(path(path_te_shared, path_output), "ctry_v.csv"))
+write.csv(low_lev_reg_v, here(path(path_te_shared, path_output), "low_lev_reg_v.csv"))
+write.csv(high_lev_reg_v, here(path(path_te_shared, path_output), "high_lev_reg_v.csv"))
+write.csv(low_lev_reg_v_rest, here(path(path_te_shared, path_output), "low_lev_reg_v_rest.csv"))
+write.csv(high_lev_reg_v_rest, here(path(path_te_shared, path_output), "high_lev_reg_v_rest.csv"))
+write.csv(non_US_v, here(path(path_te_shared, path_output), "non_US_v.csv"))
+```
+

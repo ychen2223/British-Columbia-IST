@@ -27,3 +27,5 @@ file_state_code_ref  <- c("state_code_ref.csv")
 path_ist_est_2404 <- c("TE subscription databases/IST/2024-04 release/Output")
 
 path_raw_data <- c("Client projects/Destinations/British Columbia/2024 forecast/Raw data")
+
+path_output <- c("Client projects/Destinations/British Columbia/2024 forecast/Output")

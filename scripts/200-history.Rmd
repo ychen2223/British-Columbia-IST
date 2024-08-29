@@ -18,25 +18,42 @@ source(here("scripts", "set_vars.R"))
 ```{r}
 ctry <- read_rds(here("output_data","ctry_data3.rds"))
 reg <- read_rds(here("output_data","reg_data3.rds"))
-us <- read_rds(here("output_data","us_data3.rds"))
-ctry_code <- read_csv(here("input_data","ctry_code.csv"))
 ```
-```{r}
-ctry_code <- data.frame(stat_can_ttl= c("Argentina",  "Australia",  "Austria",  "Belgium",  "Brazil",  "Bulgaria",  "China",  "Croatia",  "Czechia",  "Denmark",  "Egypt",  "Finland",  "France",  "Germany",  "Greece",  "Hong Kong",  "Hungary",  "India",  "Indonesia",  "Iran",  "Ireland",  "Israel",  "Italy",  "Japan",  "Korea, South",  "Macao",  "Malaysia",  "Mexico",  "Morocco",  "Netherlands",  "Norway",  "Philippines",  "Poland",  "Portugal",  "Russian Federation",  "Saudi Arabia",  "Singapore",  "South Africa, Republic of",  "Spain",  "Sweden",  "Switzerland",  "Taiwan",  "Thailand",  "Türkiye",  "Ukraine",  "United Arab Emirates",  "United Kingdom",  "United States of America residents entering Canada",  "Viet Nam",  "Rest of Caribbean",  "Rest of Central America",  "Rest of Emerging Europe",  "Rest of Middle East",  "Rest of North Africa",  "Rest of North America",  "Rest of Northeast Asia",  "Rest of Oceania",  "Rest of South America",  "Rest of South Asia",  "Rest of Southeast Asia",  "Rest of Sub-Saharan Africa",  "Rest of Western Europe",  "Caribbean",  "Central America",  "Emerging Europe",  "North Africa",  "North America",  "Northeast Asia",  "Oceania",  "South America",  "South Asia",  "Southeast Asia",  "Sub-Saharan Africa",  "Western Europe",  "Middle East"),
-                             IST_code=c("ARG",  "AUS",  "AUT",  "BEL",  "BRA",  "BGR",  "CHN",  "HRV",  "CZE",  "DNK",  "EGY",  "FIN",  "FRA",  "DEU",  "GRC",  "HKG",  "HUN",  "IND",  "IDN",  "IRN",  "IRL",  "ISR",  "ITA",  "JPN",  "KOR",  "MAC",  "MYS",  "MEX",  "MAR",  "NLD",  "NOR",  "PHL",  "POL",  "PRT",  "RUS",  "SAU",  "SGP",  "ZAF",  "ESP",  "SWE",  "CHE",  "TAW",  "THA",  "TUR",  "UKR",  "ARE",  "GBR",  "USA",  "VNM",  "RCAR",  "RCMA",  "REEU",  "RMES",  "RNAF",  "RNMA",  "RNEA",  "ROCE",  "RSMA",  "RSAS",  "RSEA",  "RSSA",  "RWEU",  "CAR",  "CAM",  "EEU",  "NAF",  "NMA",  "NEA",  "OCE",  "SAM",  "SAS",  "SEA",  "SSA",  "WEU",  "MES"))
 
-print(ctry_code)
+```{r}
+# table(ctry$geo, ctry$country_of_residence)
+# table(reg$geo, reg$country_of_residence)
+# table(us$geo, us$country_of_residence)
+```
+
+```{r}
+unique(ctry$country_of_residence)
+unique(reg$country_of_residence)
+```
+
+```{r}
+# ctry_code <- data.frame(stat_can_ttl= c("Argentina",  "Australia",  "Austria",  "Belgium",  "Brazil",  "Bulgaria",  "China",  "Croatia",  "Czechia",  "Denmark",  "Egypt",  "Finland",  "France",  "Germany",  "Greece",  "Hong Kong",  "Hungary",  "India",  "Indonesia",  "Iran",  "Ireland",  "Israel",  "Italy",  "Japan",  "Korea, South",  "Macao",  "Malaysia",  "Mexico",  "Morocco",  "Netherlands",  "Norway",  "Philippines",  "Poland",  "Portugal",  "Russian Federation",  "Saudi Arabia",  "Singapore",  "South Africa, Republic of",  "Spain",  "Sweden",  "Switzerland",  "Taiwan",  "Thailand",  "Türkiye",  "Ukraine",  "United Arab Emirates",  "United Kingdom",  "United States of America residents entering Canada",  "Viet Nam",  "Rest of Caribbean",  "Rest of Central America",  "Rest of Emerging Europe",  "Rest of Middle East",  "Rest of North Africa",  "Rest of North America",  "Rest of Northeast Asia",  "Rest of Oceania",  "Rest of South America",  "Rest of South Asia",  "Rest of Southeast Asia",  "Rest of Sub-Saharan Africa",  "Rest of Western Europe",  "Caribbean",  "Central America",  "Emerging Europe",  "North Africa",  "North America",  "Northeast Asia",  "Oceania",  "South America",  "South Asia",  "Southeast Asia",  "Sub-Saharan Africa",  "Western Europe",  "Middle East"),
+#                              IST_code=c("ARG",  "AUS",  "AUT",  "BEL",  "BRA",  "BGR",  "CHN",  "HRV",  "CZE",  "DNK",  "EGY",  "FIN",  "FRA",  "DEU",  "GRC",  "HKG",  "HUN",  "IND",  "IDN",  "IRN",  "IRL",  "ISR",  "ITA",  "JPN",  "KOR",  "MAC",  "MYS",  "MEX",  "MAR",  "NLD",  "NOR",  "PHL",  "POL",  "PRT",  "RUS",  "SAU",  "SGP",  "ZAF",  "ESP",  "SWE",  "CHE",  "TAW",  "THA",  "TUR",  "UKR",  "ARE",  "GBR",  "USA",  "VNM",  "RCAR",  "RCMA",  "REEU",  "RMES",  "RNAF",  "RNMA",  "RNEA",  "ROCE",  "RSMA",  "RSAS",  "RSEA",  "RSSA",  "RWEU",  "CAR",  "CAM",  "EEU",  "NAF",  "NMA",  "NEA",  "OCE",  "SAM",  "SAS",  "SEA",  "SSA",  "WEU",  "MES"))
+
+
+ctry_def <- data.frame(stat_can_ttl= c("Argentina", "Australia", "Austria", "Belgium", "Brazil", "Bulgaria", "China", "Croatia", "Czechia", "Denmark", "Egypt", "Finland", "France", "Germany", "Greece", "Hong Kong", "Hungary", "India", "Indonesia", "Iran", "Ireland", "Israel", "Italy", "Japan", "Korea, South", "Macao", "Malaysia", "Mexico", "Morocco", "Netherlands", "Norway", "Philippines", "Poland", "Portugal", "Russian Federation", "Saudi Arabia", "Singapore", "South Africa, Republic of", "Spain", "Sweden", "Switzerland", "Taiwan", "Thailand", "Türkiye", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America residents entering Canada", "Viet Nam"),
+                        orig_code = c("ARG", "AUS", "AUT", "BEL", "BRA", "BGR", "CHN", "HRV", "CZE", "DNK", "EGY", "FIN", "FRA", "DEU", "GRC", "HKG", "HUN", "IND", "IDN", "IRN", "IRL", "ISR", "ITA", "JPN", "KOR", "MAC", "MYS", "MEX", "MAR", "NLD", "NOR", "PHL", "POL", "PRT", "RUS", "SAU", "SGP", "ZAF", "ESP", "SWE", "CHE", "TWN", "THA", "TUR", "UKR", "ARE", "GBR", "USA", "VNM"),
+                             low_lev_reg=c("South America", "Australasia", "Western Europe", "Western Europe", "South America", "Central/Eastern Europe", "Northeast Asia", "Southern Europe", "Central/Eastern Europe", "Northern Europe", "Middle East", "Northern Europe", "Western Europe", "Western Europe", "Southern Europe", "Northeast Asia", "Central/Eastern Europe", "Southern Asia", "Southeast Asia", "Southern Asia", "Northern Europe", "East Mediterranean Europe", "Southern Europe", "Northeast Asia", "Northeast Asia", "Northeast Asia", "Southeast Asia", "North America, countries other than the United States of America", "Northern Africa", "Western Europe", "Northern Europe", "Southeast Asia", "Central/Eastern Europe", "Southern Europe", "Central/Eastern Europe", "Middle East", "Southeast Asia", "Southern Africa", "Southern Europe", "Northern Europe", "Western Europe", "Northeast Asia", "Southeast Asia", "East Mediterranean Europe", "Central/Eastern Europe", "Middle East", "Northern Europe", "", "Southeast Asia"))
+
+reg_def <- data.frame(low_lev_reg= c("North America, countries other than the United States of America", "Caribbean", "Central America", "South America", "Western Europe", "Central/Eastern Europe", "Northern Europe", "Southern Europe", "East Mediterranean Europe", "Western Africa", "Eastern Africa", "Northern Africa", "Central Africa", "Southern Africa", "Middle East", "Northeast Asia", "Southeast Asia", "Southern Asia", "Australasia", "Melanesia", "Micronesia", "Polynesia", "Antarctica and Adjacent Islands Region"),
+                             high_lev_reg=c("Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Europe", "Europe", "Europe", "Europe", "Europe", "Africa", "Africa", "Africa", "Africa", "Africa", "Asia", "Asia", "Asia", "Asia", "Oceania", "Oceania", "Oceania", "Oceania", "Antarctica and Adjacent Islands"))
 ```
 
 #2008-2023 overnight tourists from 49 IST countries visit to each provinces in Canada
 ```{r}
 ctry_tour <- ctry %>%
-  rbind(us) %>%
   filter(traveller_type == "Tourists (overnight)" & year <= 2023) %>%
   group_by(year, geo, country_of_residence, traveller_type) %>%
   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
-  left_join(ctry_code, by = c("country_of_residence" = "stat_can_ttl"))
+  left_join(ctry_def, by = c("country_of_residence" = "stat_can_ttl")) %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  select(-c(year))
 ```
 
 #2008-2023 overnight tourists from regions visit to each provinces in Canada
@@ -45,7 +62,10 @@ reg_tour <- reg %>%
   filter(traveller_type == "Tourists (overnight)" & year <= 2023) %>%
   group_by(year, geo, country_of_residence, traveller_type) %>%
   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-  ungroup()
+  ungroup() %>%
+  left_join(reg_def, by = c("country_of_residence" = "low_lev_reg")) %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  select(-c(year))
 ```
 
 ```{r}
@@ -53,5 +73,11 @@ colSums(is.na(ctry_tour))
 colSums(is.na(reg_tour))
 ```
 
-I'm worried that the country list and country-reg definition is different in IST and STATcan
-I'm thinking about using ytd method to calculate 2024
+```{r}
+write_rds(ctry_tour, here("output_data", "ctry_tour.rds"))
+write_rds(reg_tour, here("output_data", "reg_tour.rds"))
+
+write_rds(reg_def, here("output_data", "reg_def.rds"))
+
+```
+

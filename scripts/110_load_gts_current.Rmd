@@ -1,0 +1,138 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+#gts need to have at least till 2034
+```{r}
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(here)
+library(fs)
+library(readxl)
+library(dplyr)
+```
+
+Load vars
+```{r}
+
+source(here("scripts", "set_vars.R"))
+
+country_ref <- read_rds(here("C:/R projects/ist_2024_08/output_data/country_ref.rds"))
+
+
+```
+
+#the latest gts is in gct folder
+```{r}
+data_1 <- read_csv(path(path_te_shared, path_gts_current, file_gts_current))
+
+data_2 <- data_1 %>%
+  filter(location=="Canada")
+
+```
+
+#adding spending and nights
+```{r}
+
+data_3_re <- data_2 %>% 
+  mutate(variable = case_when(indicator == "Arrivals" ~ "v",
+                              indicator == "Overnight tourists arrivals" ~ "v",
+                              indicator == "Nights" ~ "n",
+                              str_detect(indicator_code, "FNIGHTSTOT") ~ "n",
+                              indicator == "Spending" ~ "s",
+                              T ~ NA_character_)) %>%
+  # set total
+  mutate(origin_iso3166_1a3 = case_when(indicator == "Overnight tourists arrivals" ~ "WLD",
+                                        indicator == "Nights in all accommodation types (international)" ~ "WLD",
+                                        indicator == "Spending" & origin == "World" ~ "WLD",
+                                 T ~ origin_iso3166_1a3)) 
+
+
+```
+
+#if the orig_code is NA, we still keep the orig_ttl
+#data_6 has all regions, countries, including NES("Not elsewhere specified") and WLD("Total international")
+#the orig_ttl is not yet standardized here bc regions don't have orig_code so it will leads to multiple matching
+```{r}
+data_6 <- data_3_re %>%
+	     select(loc_ttl=location,
+	            loc_code=location_code, 
+	            date=year,
+	            orig_code=origin_iso3166_1a3,
+	            orig_ttl=origin,
+	            variable,
+	            indicator, 
+	            indicator_code, 
+	            value) %>%
+	     filter(variable %in% c("v", "s", "n")) %>%
+       mutate(orig_code = ifelse(orig_ttl == "Not elsewhere specified", "NES", orig_code)) %>%
+	     mutate(orig_ttl = ifelse(orig_code == "WLD" & !is.na(orig_code), "Total international", orig_ttl)) %>%
+	     mutate(date = as.Date(paste0(date, "-01-01")))
+
+colSums(is.na(data_6))
+```
+
+
+#data_4_ctry has all countries
+```{r}
+data_4_ctry <- data_3_re %>%
+  select(loc_ttl=location,
+         loc_code=location_code, 
+         date=year,
+         orig_code=origin_iso3166_1a3,
+         orig_ttl=origin,
+         variable,
+         value) %>%
+  filter(variable %in% c("v", "s", "n") & !is.na(orig_code)) %>%
+  mutate(orig_ttl = ifelse(orig_code=="WLD", "Total international", orig_ttl)) %>%
+  mutate(date = as.Date(paste0(date, "-01-01"))) %>%
+  filter(orig_ttl != "Total international") %>%
+  left_join(country_ref %>% select(iso3166_1a3, country_name), by = c("orig_code" = "iso3166_1a3")) %>%
+  select(-c(orig_ttl)) %>%
+  rename(orig_ttl = country_name)
+
+colSums(is.na(data_4_ctry))
+```
+#data_4_ctry_NES has all countries and NES(37 years so this dataframe has 74 more obs than data_4_ctry, arrivals and nights)
+#orig_ttl is the standadized name
+```{r}
+data_4_ctry_NES <- data_3_re %>%
+  select(loc_ttl=location,
+         loc_code=location_code, 
+         date=year,
+         orig_code=origin_iso3166_1a3,
+         orig_ttl=origin,
+         variable,
+         value) %>%
+  filter(variable %in% c("v", "s", "n") & (!is.na(orig_code) | orig_ttl == "Not elsewhere specified")) %>%
+  mutate(orig_code = ifelse(orig_ttl == "Not elsewhere specified", "NES", orig_code)) %>%
+  mutate(orig_ttl = ifelse(orig_code=="WLD", "Total international", orig_ttl)) %>%
+  mutate(date = as.Date(paste0(date, "-01-01"))) %>%
+  filter(orig_code != "WLD") %>%
+  left_join(country_ref %>% select(iso3166_1a3, country_name), by = c("orig_code" = "iso3166_1a3")) %>%
+  select(-c(orig_ttl)) %>%
+  rename(orig_ttl = country_name) %>%
+  mutate(orig_ttl = ifelse(orig_code == "NES", "Not elsewhere specified", orig_ttl))
+  
+
+colSums(is.na(data_4_ctry_NES))
+```
+#Burundi(BDI), Chad(TCD), Gabon(GAB), Papua New Guinea(PNG), Uzbekistan(UZB),NES don't exist in spending, but exist in arrivals and nights. That's 6*37 year = 222 obs less in spending.
+```{r}
+mod_frame_data_4_ctry_NES <- apply(subset(data_4_ctry_NES, select = -c(value)), 2 , table)
+print(mod_frame_data_4_ctry_NES)
+```
+
+
+
+```{r}
+gts_current_ctry_NES <- data_4_ctry_NES
+write_rds(gts_current_ctry_NES, here("output_data", "gts_current_ctry_NES.rds"))
+
+# gts_current_reg_ctry <- data_6
+# write_rds(gts_current_reg_ctry, here("output_data", "gts_current_reg_ctry.rds"))
+# write_csv(gts_current_reg_ctry, here(path(path_te_shared, path_ist_est_2408), "gts_current_reg_ctry.csv"))
+
+```
+
