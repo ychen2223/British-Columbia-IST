@@ -16,11 +16,17 @@ source(here("scripts", "set_vars.R"))
 ```
 
 ```{r}
-ctry_data <- read_csv(path(path_te_shared, path_raw_data,"can_province_49_ctry.csv")) %>%
+ctry_data <- read_csv(path(path_te_shared, path_raw_data,"can_province_50_ctry.csv")) %>%
   janitor::clean_names()
 reg_data <- read_csv(path(path_te_shared, path_raw_data,"can_province_reg.csv")) %>%
   janitor::clean_names()
 non_us_data <- read_csv(path(path_te_shared, path_raw_data,"can_province_non_us.csv")) %>%
+  janitor::clean_names()
+
+
+spend_data <- read_csv(path(path_te_shared, path_raw_data,"spend.csv")) %>%
+  janitor::clean_names()
+spend_pro_data <- read_csv(path(path_te_shared, path_raw_data,"spend_pro.csv")) %>%
   janitor::clean_names()
 ```
 
@@ -29,9 +35,15 @@ table(ctry_data$geo, ctry_data$country_of_residence)
 table(reg_data$geo, reg_data$country_of_residence)
 table(non_us_data$geo, non_us_data$country_of_residence)
 
+table(spend_data$geo, spend_data$area_of_residence)
+table(spend_pro_data$geo, spend_pro_data$area_of_residence)
+
 unique(ctry_data$country_of_residence)
 unique(reg_data$country_of_residence)
 unique(non_us_data$country_of_residence)
+
+unique(spend_data$area_of_residence)
+unique(spend_pro_data$area_of_residence)
 ```
 
 
@@ -44,6 +56,12 @@ reg_data2 <- reg_data %>%
 
 non_us_data2 <- non_us_data %>%
   select(ref_date, geo, country_of_residence, traveller_type, value)
+
+spend_data2 <- spend_data %>%
+  select(ref_date, geo, area_of_residence, value)
+
+spend_pro_data2 <- spend_pro_data %>%
+  select(ref_date, geo, area_of_residence, value)
 ```
 
 ```{r}
@@ -58,12 +76,22 @@ reg_data3 <- reg_data2 %>%
 non_us_data3 <- non_us_data2 %>%
   tidyr::complete(ref_date, geo, country_of_residence, traveller_type, fill = list(value = 0)) %>%
   mutate(year = as.numeric(substr(ref_date, 1, 4)), .after = ref_date)
+
+spend_data3 <- spend_data2 %>%
+  tidyr::complete(ref_date, geo, area_of_residence, fill = list(value = 0)) %>%
+  mutate(year = as.numeric(substr(ref_date, 1, 4)), .after = ref_date)
+
+spend_pro_data3 <- spend_pro_data2 %>%
+  tidyr::complete(ref_date, geo, area_of_residence, fill = list(value = 0)) %>%
+  mutate(year = as.numeric(substr(ref_date, 1, 4)), .after = ref_date)
 ```
 
 ```{r}
 colSums(is.na(ctry_data3))
 colSums(is.na(reg_data3))
 colSums(is.na(non_us_data3))
+colSums(is.na(spend_data3))
+colSums(is.na(spend_pro_data3))
 ```
 
 
@@ -71,5 +99,7 @@ colSums(is.na(non_us_data3))
 write_rds(ctry_data3, here("output_data", "ctry_data3.rds"))
 write_rds(reg_data3, here("output_data", "reg_data3.rds"))
 write_rds(non_us_data3, here("output_data", "non_us_data3.rds"))
+write_rds(spend_data3, here("output_data", "spend_data3.rds"))
+write_rds(spend_pro_data3, here("output_data", "spend_pro_data3.rds"))
 ```
 

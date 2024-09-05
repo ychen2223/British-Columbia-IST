@@ -80,9 +80,38 @@ pro_share <- df1 %>%
   summarise(value = sum(value, .na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
   group_by(orig_code) %>%
-  mutate(share = value / value[geo == "Canada"]) %>%
+  mutate(avg_share = value / value[geo == "Canada"]) %>%
   ungroup()
 ```
+
+```{r}
+pro_share_complete <- df1 %>%
+  group_by(orig_code, date) %>%
+  mutate(share_c = value / value[geo == "Canada"]) %>%
+  ungroup()
+
+share_forecast <- pro_share_complete %>%
+  left_join(select(pro_share, orig_code, geo, avg_share), by = c("orig_code", "geo")) %>%
+  filter(date == "2023-01-01") %>%
+  mutate(share_2024 = 0.3*avg_share + 0.7*share_c,
+         share_2025 = 0.3*avg_share + 0.7*share_2024,
+         share_2026 = 0.3*avg_share + 0.7*share_2025,
+         share_2027 = 0.3*avg_share + 0.7*share_2026,
+         share_2028 = 0.3*avg_share + 0.7*share_2027,
+         share_2029 = 0.3*avg_share + 0.7*share_2028,
+         share_2030 = 0.3*avg_share + 0.7*share_2029,
+         share_2031 = 0.3*avg_share + 0.7*share_2030,
+         share_2032 = 0.3*avg_share + 0.7*share_2031,
+         share_2033 = 0.3*avg_share + 0.7*share_2032,
+         share_2034 = 0.3*avg_share + 0.7*share_2033)
+
+share_forecast2 <- share_forecast %>%
+  select(geo, orig_code, share_2024:share_2034) %>%
+  pivot_longer(cols = share_2024:share_2034, names_to = "date", values_to = "share_future") %>%
+  mutate(date = substr(date, nchar(date)-3, nchar(date))) %>%
+  mutate(date = as.Date(paste0(date, "-01-01")))
+```
+
 
 #complete the date
 ```{r}
@@ -97,10 +126,10 @@ df3 <- df2 %>%
   left_join(df1, by = c("geo", "date", "orig_code", "country_of_residence", "low_lev_reg", "traveller_type")) %>%  #history
   left_join(select(gts_v, date, orig_code, gts_v = value), by = c("date", "orig_code")) %>%
   left_join(ratio_2023, by = c("orig_code")) %>%
-  left_join(select(pro_share, orig_code, geo, share), by = c("orig_code", "geo")) %>%
+  left_join(select(share_forecast2, orig_code, geo, date, share_future), by = c("orig_code", "date", "geo")) %>%
   mutate(value = case_when(date <= "2023-01-01" ~ value,
-                           date >= "2024-01-01" ~ gts_v * ratio * share)) %>%
-  select(-c(gts_v, ratio, share))
+                           date >= "2024-01-01" ~ gts_v * ratio * share_future)) %>%
+  select(-c(gts_v, ratio, share_future))
 
 colSums(is.na(df3))
 ```
@@ -242,14 +271,65 @@ test3 <- non_us_data3 %>%
 ```
 
 
-```{r}
-ctry_v <- df3
-low_lev_reg_v <- df5
-low_lev_reg_v_rest <- df5_rest
-high_lev_reg_v <- df6
-high_lev_reg_v_rest <- df6_rest
-non_US_v <- df7
 
+```{r}
+ctry_v <- df3 %>%
+  mutate(high_lev_reg = NA, .after = low_lev_reg)
+
+low_lev_reg_v <- df5 %>%
+  mutate(orig_code = NA,
+         low_lev_reg = country_of_residence) %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
+
+low_lev_reg_v_rest <- df5_rest %>%
+  mutate(orig_code = NA,
+         low_lev_reg = country_of_residence) %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value = value_rest)
+
+high_lev_reg_v <- df6 %>%
+  mutate(orig_code = NA,
+         country_of_residence = high_lev_reg,
+         low_lev_reg = NA) %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
+
+high_lev_reg_v_rest <- df6_rest %>%
+  mutate(orig_code = NA,
+         country_of_residence = high_lev_reg,
+         low_lev_reg = NA) %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value = value_rest)
+
+non_US_v <- df7 %>%
+  mutate(orig_code = NA,
+         low_lev_reg = NA,
+         high_lev_reg = NA) %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
+
+ttl_int <- ctry_v %>%
+  filter(orig_code == "USA") %>%
+  rbind(non_US_v) %>%
+  group_by(geo, date) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(orig_code = NA, 
+         country_of_residence = "Total international", 
+         low_lev_reg = NA, 
+         high_lev_reg = NA,  
+         traveller_type = NA, ) %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
+```
+
+```{r}
+final_df_v <- ctry_v %>%
+  rbind(low_lev_reg_v) %>%
+  rbind(low_lev_reg_v_rest) %>%
+  rbind(high_lev_reg_v) %>%
+  rbind(high_lev_reg_v_rest) %>%
+  rbind(non_US_v) %>%
+  rbind(ttl_int)
+
+```
+
+```{r}
 colSums(is.na(ctry_v))
 colSums(is.na(low_lev_reg_v))
 colSums(is.na(high_lev_reg_v))
@@ -264,11 +344,14 @@ write_rds(low_lev_reg_v_rest, here("output_data", "low_lev_reg_v_rest.rds"))
 write_rds(high_lev_reg_v_rest, here("output_data", "high_lev_reg_v_rest.rds"))
 write_rds(non_US_v, here("output_data", "non_US_v.rds"))
 
-write.csv(ctry_v, here(path(path_te_shared, path_output), "ctry_v.csv"))
-write.csv(low_lev_reg_v, here(path(path_te_shared, path_output), "low_lev_reg_v.csv"))
-write.csv(high_lev_reg_v, here(path(path_te_shared, path_output), "high_lev_reg_v.csv"))
-write.csv(low_lev_reg_v_rest, here(path(path_te_shared, path_output), "low_lev_reg_v_rest.csv"))
-write.csv(high_lev_reg_v_rest, here(path(path_te_shared, path_output), "high_lev_reg_v_rest.csv"))
-write.csv(non_US_v, here(path(path_te_shared, path_output), "non_US_v.csv"))
+# write.csv(ctry_v, here(path(path_te_shared, path_output), "ctry_v.csv"))
+# write.csv(low_lev_reg_v, here(path(path_te_shared, path_output), "low_lev_reg_v.csv"))
+# write.csv(high_lev_reg_v, here(path(path_te_shared, path_output), "high_lev_reg_v.csv"))
+# write.csv(low_lev_reg_v_rest, here(path(path_te_shared, path_output), "low_lev_reg_v_rest.csv"))
+# write.csv(high_lev_reg_v_rest, here(path(path_te_shared, path_output), "high_lev_reg_v_rest.csv"))
+# write.csv(non_US_v, here(path(path_te_shared, path_output), "non_US_v.csv"))
+
+write_rds(final_df_v, here("output_data", "final_df_v.rds"))
+write.csv(final_df_v, here(path(path_te_shared, path_output), "final_df_v.csv"))
 ```
 

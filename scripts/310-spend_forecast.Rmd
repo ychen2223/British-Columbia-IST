@@ -1,0 +1,149 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(here)
+library(fs)
+library(readxl)
+
+source(here("scripts", "set_vars.R"))
+```
+
+```{r}
+gts_current_ctry_NES <- read_rds(here("output_data", "gts_current_ctry_NES.rds")) #current gts for Canada
+
+spend_data3 <- read_rds(here("output_data", "spend_data3.rds"))
+spend_pro_data3 <- read_rds(here("output_data", "spend_pro_data3.rds"))
+
+ctry_v <- read_rds(here("output_data", "ctry_v.rds")) 
+low_lev_reg_v <- read_rds(here("output_data", "low_lev_reg_v.rds")) 
+non_US_v <- read_rds(here("output_data", "non_US_v.rds")) 
+
+ctry_def <- read_rds(here("output_data", "ctry_def.rds"))
+```
+
+#A concept similar to adr
+```{r}
+test1_can <- spend_pro_data3 %>%
+  filter(area_of_residence == "Residents of countries other than the United States of America" & year <= 2023 & geo == "Canada") %>%
+  group_by(year, geo) %>%
+  summarise(s_can = sum(value, na.rm = "TRUE"), .groups = "drop") %>%
+  ungroup()
+
+#gap between Canada and sum of provinces
+test1 <- spend_pro_data3 %>%
+  filter(area_of_residence == "Residents of countries other than the United States of America" & year <= 2023 & geo != "Canada") %>%
+  group_by(year) %>%
+  summarise(s_sum = sum(value, na.rm = "TRUE"), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(test1_can, by = c("year")) %>%
+  mutate(gap = s_can - s_sum)
+  
+agg_pro_1 <- non_US_v %>%
+  filter(geo == "Northwest Territories" | geo == "Nunavut" | geo == "Yukon") %>%
+  group_by(date) %>%
+  summarise(value = sum(value, na.rm = "TRUE"), .groups = "drop") %>%
+  ungroup()
+
+adr <- spend_pro_data3 %>%
+  filter(area_of_residence == "Residents of countries other than the United States of America" & year <= 2023) %>%
+  group_by(year, geo) %>%
+  summarise(s = sum(value, na.rm = "TRUE"), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  left_join(select(non_US_v, geo, date, v = value), by = c("geo", "date")) %>%
+  mutate(spend_per = s/v)
+```
+
+```{r}
+s_hist1 <- spend_data3 %>%
+  group_by(year, geo, area_of_residence) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(ctry_def, by = c("area_of_residence" = "stat_can_ttl"))
+```
+
+#country history
+```{r}
+s_hist2 <- s_hist1 %>%
+  filter(!is.na(orig_code) | area_of_residence == "United States of America residents, tourists (overnight)") %>%
+  mutate(orig_code = ifelse(area_of_residence == "United States of America residents, tourists (overnight)", "USA", orig_code)) %>%
+  filter(year <= 2023) %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  select(-year)
+```
+
+```{r}
+s_hist3 <- s_hist2 %>%
+  left_join(select(ctry_v, geo, orig_code, date, v = value), by = c("geo", "orig_code", "date")) %>%
+  mutate(spend_per = value/v)
+```
+
+```{r}
+gts_s <- gts_current_ctry_NES %>%
+  filter(variable == "s") %>%
+  select(loc_code, date, orig_code, s = value)
+
+gts_v <- gts_current_ctry_NES %>%
+  filter(variable == "v") %>%
+  select(loc_code, date, orig_code, v = value)
+
+gts_spend_per <- gts_s %>%
+  left_join(gts_v, by = c("loc_code", "date", "orig_code")) %>%
+  mutate(gts_spend_per = s/v) %>%
+  group_by(loc_code, orig_code) %>%
+  mutate(growth = gts_spend_per/gts_spend_per[date == "2023-01-01"]) %>%
+  ungroup() %>%
+  select(date, orig_code, growth)
+
+#use Netherlands to fill Belgium
+gts_bel <- gts_spend_per %>%
+  filter(orig_code == "NLD") %>%
+  mutate(orig_code = "BEL")
+
+gts_spend_per_complete <- gts_spend_per %>%
+  filter(orig_code != "BEL") %>%
+  rbind(gts_bel)
+```
+
+#complete the date
+```{r}
+df_hold <- s_hist3 %>%
+  select(geo, date, orig_code, area_of_residence, low_lev_reg) %>%
+  complete(nesting(geo, orig_code, area_of_residence, low_lev_reg), date = seq.Date(from=as.Date("2018-01-01"), to=as.Date("2034-01-01"), by="year"))
+```
+
+#country spending forecast complete
+```{r}
+s_forecast1 <- df_hold %>%
+  left_join(select(ctry_v, geo, orig_code, date, v = value), by = c("geo", "orig_code", "date")) %>%
+  left_join(select(s_hist3, geo, orig_code, date, s = value, spend_per), by = c("geo", "orig_code", "date")) %>%
+  left_join(gts_spend_per_complete, by = c("orig_code", "date")) %>%
+  group_by(geo, orig_code) %>%
+  mutate(revised_spend_per = case_when(date <= "2023-01-01" ~ spend_per,
+                               date >= "2024-01-01"~ spend_per[date == "2023-01-01"] * growth)) %>%
+  ungroup() %>%
+  mutate(s_forecast = v * revised_spend_per, 
+         gap = s_forecast - s) %>%
+  select(-c(s,spend_per, growth, gap))
+```
+
+#region history
+```{r}
+s_reg_hist1 <- s_hist1 %>%
+  filter(is.na(orig_code)) %>%
+  filter(year <= 2023) %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  select(-c(year, orig_code, low_lev_reg))
+```
+
+```{r}
+
+```
+
