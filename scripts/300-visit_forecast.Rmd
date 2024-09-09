@@ -154,29 +154,30 @@ ctry_def2 <- data.frame(orig_code= c("GRL", "MEX", "SPM", "BLZ", "CRI", "SLV", "
 #Manually give Micronesia and Polynisia estimated growth
 #Manually add Antarctica
 ```{r}
-gts_v_reg <- gts_v %>%
+gts_v_rest_reg <- gts_v %>%
   left_join(ctry_def2, by = c("orig_code")) %>%
+  filter(orig_code != unique(df3$orig_code)) %>%
   group_by(date, low_lev_reg) %>%
-  summarise(sum_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  summarise(sum_rest_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
   group_by(low_lev_reg) %>%
-  mutate(growth = sum_reg/sum_reg[date == "2023-01-01"]) %>%
+  mutate(growth = sum_rest_reg/sum_rest_reg[date == "2023-01-01"]) %>%
   ungroup()
 
-oce <- gts_v_reg %>%
+oce <- gts_v_rest_reg %>%
   filter((low_lev_reg == "Polynesia" | low_lev_reg == "Micronesia"| low_lev_reg == "Melanesia") & date >= "2024-01-01") %>%
   group_by(date) %>%
   mutate(growth_oce = growth[low_lev_reg == "Melanesia"]) %>%
   ungroup() %>%
-  select(-c(sum_reg, growth))
+  select(-c(sum_rest_reg, growth))
 
-ata <- gts_v_reg %>%
+ata <- gts_v_rest_reg %>%
   filter(low_lev_reg == "Melanesia") %>%
   mutate(low_lev_reg = "Antarctica and Adjacent Islands Region") %>%
-  select(-c(sum_reg))
+  select(-c(sum_rest_reg))
 
-complete_growth <- gts_v_reg %>%
-  select(-c(sum_reg)) %>%
+complete_rest_growth <- gts_v_rest_reg %>%
+  select(-c(sum_rest_reg)) %>%
   rbind(ata) %>%
   left_join(oce, by = c("date", "low_lev_reg")) %>%
   mutate(growth = ifelse(is.na(growth_oce), growth, growth_oce)) %>%
@@ -191,21 +192,9 @@ df4 <- reg_tour %>%
   complete(nesting(geo, country_of_residence, high_lev_reg, traveller_type), date = seq.Date(from=as.Date("2008-01-01"), to=as.Date("2034-01-01"), by="year"))
 ```
 
-#calculate future
-```{r}
-df5 <- df4 %>%
-  filter(!is.na(high_lev_reg)) %>%
-  left_join(select(reg_tour, geo, date, country_of_residence, value), by = c("geo", "date", "country_of_residence")) %>%
-  left_join(complete_growth, by = c("date", "country_of_residence" = "low_lev_reg")) %>%
-  group_by(geo, country_of_residence) %>%
-  mutate(value = case_when(date >= "2024-01-01" ~ value[date== "2023-01-01"] * growth,
-                           TRUE ~ value)) %>%
-  ungroup() %>%
-  mutate(value = ifelse(is.na(value), 0, value)) %>%
-  select(-c(growth))
-```
 
 ```{r}
+#sum up countries within region
 df3_reg <- df3 %>%
   filter(orig_code != "USA") %>%
   group_by(geo, low_lev_reg, date) %>%
@@ -213,35 +202,62 @@ df3_reg <- df3 %>%
   ungroup()
 ```
 
+#calculate low level rest of region
 ```{r}
-df5_rest <- df5 %>%
+df5 <- df4 %>%
+  filter(!is.na(high_lev_reg)) %>%
+  left_join(select(reg_tour, geo, date, country_of_residence, value), by = c("geo", "date", "country_of_residence")) %>%
   left_join(df3_reg, by = c("geo", "country_of_residence" = "low_lev_reg", "date")) %>%
+  left_join(complete_rest_growth, by = c("date", "country_of_residence" = "low_lev_reg")) %>%
   mutate(value_reg = ifelse(is.na(value_reg),0,value_reg)) %>%
   mutate(value_rest = value - value_reg) %>%
+  mutate(low_lev_reg = country_of_residence, .after = country_of_residence) %>%
   mutate(country_of_residence = paste0("Rest of ",country_of_residence)) %>%
-  select(-c(value, value_reg))
+  select(-c(value, value_reg)) %>%
+  group_by(geo, country_of_residence) %>%
+  mutate(value_rest = case_when(date >= "2024-01-01" ~ value_rest[date== "2023-01-01"] * growth,
+                           TRUE ~ value_rest)) %>%
+  ungroup() %>%
+  mutate(value_rest = ifelse(is.na(value_rest), 0, value_rest)) %>%
+  select(-c(growth)) %>%
+  mutate(orig_code = NA, .after = geo) %>%
+  rename(value = value_rest)
 ```
 
-#calculate high level region
+
+#calculate low level region
 ```{r}
-df6 <- df5 %>%
-  group_by(geo, date, high_lev_reg, traveller_type) %>%
+low_lev <- df3 %>%
+  left_join(reg_def, by = c("low_lev_reg")) %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value) %>%
+  rbind(df5) %>%
+  filter(!is.na(low_lev_reg) & country_of_residence != "United States of America residents entering Canada") %>%
+  group_by(geo, low_lev_reg, high_lev_reg, date) %>%
   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
   ungroup()
 ```
 
+#calculate high level region
 ```{r}
-df6_rest <- df5_rest %>%
+high_lev <- low_lev %>%
+  group_by(geo, date, high_lev_reg) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup()
+```
+
+#calculate high level rest of region
+```{r}
+df6 <- df5 %>%
   group_by(geo, date, high_lev_reg, traveller_type) %>%
-  summarise(value_rest = sum(value_rest, na.rm = TRUE), .groups = "drop") %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
   mutate(high_lev_reg = paste0("Rest of ",high_lev_reg))
 ```
 
 #calculate "Residents of countries other than the United States of America entering Canada"
 ```{r}
-df7 <- df6 %>%
-  group_by(geo, date, traveller_type) %>%
+non_us_lev <- high_lev %>%
+  group_by(geo, date) %>%
   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
   mutate(country_of_residence = "Residents of countries other than the United States of America entering Canada", .after = date)
@@ -253,7 +269,7 @@ df7 <- df6 %>%
 ```{r}
 test2 <- reg_tour %>%
   filter(is.na(high_lev_reg)) %>%
-  left_join(df6, by = c("geo", "date", "country_of_residence" = "high_lev_reg")) %>%
+  left_join(high_lev, by = c("geo", "date", "country_of_residence" = "high_lev_reg")) %>%
   mutate(gap = value.x-value.y)
 ```
 
@@ -266,7 +282,7 @@ test3 <- non_us_data3 %>%
   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
   mutate(date = as.Date(paste0(year, "-01-01"))) %>%
-  left_join(df7, by = c("geo", "date")) %>%
+  left_join(non_us_lev, by = c("geo", "date")) %>%
   mutate(gap = value.x-value.y)
 ```
 
@@ -276,32 +292,37 @@ test3 <- non_us_data3 %>%
 ctry_v <- df3 %>%
   mutate(high_lev_reg = NA, .after = low_lev_reg)
 
-low_lev_reg_v <- df5 %>%
+low_lev_reg_v <- low_lev %>%
   mutate(orig_code = NA,
-         low_lev_reg = country_of_residence) %>%
+         country_of_residence = low_lev_reg,
+         traveller_type = "Tourists (overnight)") %>%
   select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
 
-low_lev_reg_v_rest <- df5_rest %>%
+low_lev_reg_v_rest <- df5 %>%
   mutate(orig_code = NA,
-         low_lev_reg = country_of_residence) %>%
-  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value = value_rest)
-
-high_lev_reg_v <- df6 %>%
-  mutate(orig_code = NA,
-         country_of_residence = high_lev_reg,
-         low_lev_reg = NA) %>%
+         low_lev_reg = country_of_residence,
+         traveller_type = "Tourists (overnight)") %>%
   select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
 
-high_lev_reg_v_rest <- df6_rest %>%
+high_lev_reg_v <- high_lev %>%
   mutate(orig_code = NA,
          country_of_residence = high_lev_reg,
-         low_lev_reg = NA) %>%
-  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value = value_rest)
+         low_lev_reg = NA,
+         traveller_type = "Tourists (overnight)") %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
 
-non_US_v <- df7 %>%
+high_lev_reg_v_rest <- df6 %>%
+  mutate(orig_code = NA,
+         country_of_residence = high_lev_reg,
+         low_lev_reg = NA,
+         traveller_type = "Tourists (overnight)") %>%
+  select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
+
+non_US_v <- non_us_lev %>%
   mutate(orig_code = NA,
          low_lev_reg = NA,
-         high_lev_reg = NA) %>%
+         high_lev_reg = NA,
+         traveller_type = "Tourists (overnight)") %>%
   select(geo, orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date, value)
 
 ttl_int <- ctry_v %>%

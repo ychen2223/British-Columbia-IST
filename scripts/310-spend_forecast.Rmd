@@ -21,9 +21,10 @@ gts_current_ctry_NES <- read_rds(here("output_data", "gts_current_ctry_NES.rds")
 spend_data3 <- read_rds(here("output_data", "spend_data3.rds"))
 spend_pro_data3 <- read_rds(here("output_data", "spend_pro_data3.rds"))
 
-ctry_v <- read_rds(here("output_data", "ctry_v.rds")) 
-low_lev_reg_v <- read_rds(here("output_data", "low_lev_reg_v.rds")) 
-non_US_v <- read_rds(here("output_data", "non_US_v.rds")) 
+ctry_v <- read_rds(here("output_data", "ctry_v.rds"))
+low_lev_reg_v <- read_rds(here("output_data", "low_lev_reg_v.rds"))
+non_US_v <- read_rds(here("output_data", "non_US_v.rds"))
+final_df_v<- read_rds(here("output_data", "final_df_v.rds"))
 
 ctry_def <- read_rds(here("output_data", "ctry_def.rds"))
 ```
@@ -44,46 +45,164 @@ test1 <- spend_pro_data3 %>%
   ungroup() %>%
   left_join(test1_can, by = c("year")) %>%
   mutate(gap = s_can - s_sum)
-  
-agg_pro_1 <- non_US_v %>%
-  filter(geo == "Northwest Territories" | geo == "Nunavut" | geo == "Yukon") %>%
-  group_by(date) %>%
-  summarise(value = sum(value, na.rm = "TRUE"), .groups = "drop") %>%
-  ungroup()
 
-adr <- spend_pro_data3 %>%
-  filter(area_of_residence == "Residents of countries other than the United States of America" & year <= 2023) %>%
-  group_by(year, geo) %>%
-  summarise(s = sum(value, na.rm = "TRUE"), .groups = "drop") %>%
-  ungroup() %>%
-  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
-  left_join(select(non_US_v, geo, date, v = value), by = c("geo", "date")) %>%
-  mutate(spend_per = s/v)
+# #sum Yukon, nw territories, and Nunavut
+# agg_pro_1 <- final_df_v %>%
+#   filter((geo == "Northwest Territories" | geo == "Nunavut" | geo == "Yukon") & country_of_residence == "Total international") %>%
+#   group_by(date) %>%
+#   mutate(value = sum(value, na.rm = "TRUE"), .groups = "drop") %>%
+#   ungroup() %>%
+#   mutate(geo2 = "Yukon, Northwest Territories and Nunavut") %>%
+#   select(geo, geo2, date, v = value)
+# 
+# agg_pro_2 <- final_df_v %>%
+#   filter(geo != "Northwest Territories" & geo != "Nunavut" & geo != "Yukon" & country_of_residence == "Total international") %>%
+#   select(geo, date, v = value) %>%
+#   mutate(geo2 = geo, .after = geo) %>%
+#   rbind(agg_pro_1) %>%
+#   rename(geo_true = geo)
+# 
+# #spend per visit is not very consistent and comparable
+# adr <- spend_pro_data3 %>%
+#   filter(area_of_residence == "Non-resident visitors to Canada" & year <= 2023) %>%
+#   group_by(year, geo) %>%
+#   summarise(s = sum(value, na.rm = "TRUE"), .groups = "drop") %>%
+#   ungroup() %>%
+#   mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+#   left_join(agg_pro_2, by = c("geo" = "geo2", "date")) %>%
+#   mutate(spend_per = s/v) %>%
+#   filter(geo != "Canada")
+# 
+# adr_can <- adr %>%
+#   select(geo, s, v, date) %>%
+#   distinct() %>%
+#   group_by(date) %>%
+#   summarise(s = sum(s, na.rm = TRUE),
+#             v = sum(v, na.rm = TRUE),
+#             .groups = "drop") %>%
+#   ungroup() %>%
+#   mutate(spend_per_can = s/v)
+# 
+# adr_complete <- adr %>%
+#   left_join(select(adr_can, date, spend_per_can), by = c("date")) %>%
+#   mutate(adr_pct = spend_per/spend_per_can) %>%
+#   select(geo = geo_true, date, s, v, spend_per, spend_per_can, adr_pct)
 ```
 
+#country and rest of region to Canada history
 ```{r}
 s_hist1 <- spend_data3 %>%
   group_by(year, geo, area_of_residence) %>%
   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-  ungroup() %>%
-  left_join(ctry_def, by = c("area_of_residence" = "stat_can_ttl"))
+  ungroup()
+  # left_join(ctry_def, by = c("area_of_residence" = "stat_can_ttl"))
 ```
 
-#country history
+#country and rest of region to Canada history, filter <= 2023
 ```{r}
 s_hist2 <- s_hist1 %>%
-  filter(!is.na(orig_code) | area_of_residence == "United States of America residents, tourists (overnight)") %>%
-  mutate(orig_code = ifelse(area_of_residence == "United States of America residents, tourists (overnight)", "USA", orig_code)) %>%
+  #mutate(orig_code = ifelse(area_of_residence == "United States of America residents, tourists (overnight)", "USA", orig_code)) %>%
   filter(year <= 2023) %>%
   mutate(date = as.Date(paste0(year, "-01-01"))) %>%
   select(-year)
 ```
 
 ```{r}
+list1 <- c("United States of America residents entering Canada", "Brazil", "Caribbean", "Mexico", "Belgium", "France", "Germany", "Italy", "Netherlands", "Denmark", "Finland", "Iceland", "Norway", "Sweden", "Switzerland", "United Kingdom", "Northern Africa", "Australia", "China", "Hong Kong", "India", "Japan", "New Zealand", "Southern Asia", "Americas, countries other than the United States of America", "Europe", "Africa", "Asia", "Oceania")
+
+list2 <- c("United States of America residents entering Canada", "Brazil", "Caribbean", "Mexico", "Belgium", "France", "Germany", "Italy", "Netherlands", "Switzerland", "United Kingdom", "Northern Africa", "Australia", "China", "Hong Kong", "India", "Japan", "New Zealand", "Southern Asia")
+```
+
+#prepare visits
+```{r}
+org_ctry <- final_df_v %>%
+  filter(country_of_residence %in% list1) %>%
+  select(geo, country_of_residence, date, value)
+
+scan <- org_ctry %>%
+  filter(country_of_residence %in% c("Denmark", "Finland", "Iceland", "Norway", "Sweden")) %>%
+  group_by(geo, date) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Scandinavia", .after = geo)
+
+rest_ame <- org_ctry %>%
+  filter(country_of_residence %in% c("Brazil", "Caribbean", "Mexico")) %>%
+  group_by(geo, date) %>%
+  summarise(value_sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(org_ctry %>% filter(country_of_residence == "Americas, countries other than the United States of America"), by = c("geo", "date")) %>%
+  mutate(country_of_residence = "Americas, countries other than the United States of America - other countries",
+         value_rest = value - value_sum) %>%
+  select(geo, country_of_residence, date, value = value_rest)
+
+rest_eur <- org_ctry %>%
+  filter(country_of_residence %in% c("Belgium", "France", "Germany", "Italy", "Netherlands", "Denmark", "Finland", "Iceland", "Norway", "Sweden", "Switzerland", "United Kingdom")) %>%
+  group_by(geo, date) %>%
+  summarise(value_sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(org_ctry %>% filter(country_of_residence == "Europe"), by = c("geo", "date")) %>%
+  mutate(country_of_residence = "Europe - other countries",
+         value_rest = value - value_sum) %>%
+  select(geo, country_of_residence, date, value = value_rest)
+
+rest_afr <- org_ctry %>%
+  filter(country_of_residence %in% c("Northern Africa")) %>%
+  rename(value_sum = value) %>%
+  left_join(org_ctry %>% filter(country_of_residence == "Africa"), by = c("geo", "date")) %>%
+  mutate(country_of_residence = "Africa - other countries",
+         value_rest = value - value_sum) %>%
+  select(geo, country_of_residence, date, value = value_rest)
+
+rest_as <- org_ctry %>%
+  filter(country_of_residence %in% c("Australia", "China", "Hong Kong", "India", "Japan", "New Zealand", "Southern Asia")) %>%
+  group_by(geo, date) %>%
+  summarise(value_sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(org_ctry %>% 
+              filter(country_of_residence %in% c("Asia", "Oceania")) %>%
+              group_by(geo, date) %>%
+              summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+              ungroup()
+            , by = c("geo", "date")) %>%
+  mutate(country_of_residence = "Asia and Oceania - other countries",
+         value_rest = value - value_sum) %>%
+  select(geo, country_of_residence, date, value = value_rest)
+
+final_org_ctry_v <- final_df_v %>%
+  filter(country_of_residence %in% list2) %>%
+  select(geo, country_of_residence, date, value) %>%
+  rbind(scan, rest_ame, rest_eur, rest_afr, rest_as) %>%
+  rename(v = value) %>%
+  mutate(country_of_residence = ifelse(country_of_residence == "United States of America residents entering Canada", "United States of America residents, tourists (overnight)", country_of_residence))
+
+```
+
+#calculate Canada spend per visit for countries and rest of region
+```{r}
 s_hist3 <- s_hist2 %>%
-  left_join(select(ctry_v, geo, orig_code, date, v = value), by = c("geo", "orig_code", "date")) %>%
+  left_join(final_org_ctry_v, by = c("geo", "area_of_residence" = "country_of_residence", "date")) %>%
   mutate(spend_per = value/v)
 ```
+
+#add USA and no Antartica
+```{r}
+ctry_def3 <- data.frame(orig_code= c("USA", "GRL", "MEX", "SPM", "BLZ", "CRI", "SLV", "GTM", "HND", "NIC", "PAN", "AIA", "ATG", "ABW", "BHS", "BRB", "BMU", "BES", "CYM", "CUB", "CUW", "DMA", "DOM", "GRD", "GLP", "HTI", "JAM", "MTQ", "MSR", "ANT", "PRI", "BLM", "KNA", "LCA", "MAF", "VCT", "SXM", "TTO", "TCA", "VGB", "VIR", "ARG", "BOL", "BRA", "CHL", "COL", "ECU", "FLK", "GUF", "GUY", "PRY", "PER", "SGS", "SUR", "URY", "VEN", "AUT", "BEL", "FRA", "DEU", "LIE", "LUX", "MCO", "NLD", "CHE", "ARM", "AZE", "BLR", "BGR", "CZE", "EST", "GEO", "HUN", "KAZ", "KGZ", "LVA", "LTU", "MDA", "POL", "ROU", "RUS", "SVK", "TJK", "TKM", "UKR", "UZB", "ALA", "DNK", "FRO", "FIN", "GGY", "ISL", "IRL", "IMN", "JEY", "NOR", "", "SJM", "SWE", "GBR", "ALB", "AND", "BIH", "HRV", "GIB", "GRC", "VAT", "ITA", "", "MLT", "MNE", "MKD", "PRT", "SMR", "SRB", "SVN", "ESP", "CYP", "ISR", "TUR", "BEN", "BFA", "CPV", "CIV", "GMB", "GHA", "GIN", "GNB", "LBR", "MLI", "MRT", "NER", "NGA", "SHN", "SEN", "SLE", "TGO", "IOT", "BDI", "COM", "DJI", "ERI", "ETH", "KEN", "MDG", "MWI", "MUS", "MYT", "MOZ", "REU", "RWA", "SYC", "SOM", "TZA", "UGA", "ZMB", "ZWE", "DZA", "MAR", "SSD", "SDN", "TUN", "ESH", "AGO", "CMR", "CAF", "TCD", "COD", "COG", "GNQ", "GAB", "STP", "BWA", "SWZ", "LSO", "NAM", "ZAF", "BHR", "EGY", "IRQ", "JOR", "KWT", "LBN", "LBY", "OMN", "QAT", "SAU", "SYR", "ARE", "", "YEM", "CHN", "HKG", "JPN", "PRK", "KOR", "MAC", "MNG", "TWN", "BRN", "KHM", "IDN", "LAO", "MYS", "MMR", "PHL", "SGP", "THA", "TLS", "VNM", "AFG", "BGD", "BTN", "IND", "IRN", "MDV", "NPL", "PAK", "LKA", "AUS", "NZL", "FJI", "NCL", "NFK", "PNG", "SLB", "VUT", "CXR", "CCK", "GUM", "KIR", "MHL", "FSM", "NRU", "MNP", "PLW", "UMI", "ASM", "COK", "PYF", "NIU", "PCN", "WSM", "TKL", "TON", "TUV", "WLF"),
+                       s_ttl=c("United States of America residents, tourists (overnight)", "Americas, countries other than the United States of America - other countries", "Mexico", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean",
+                               "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Caribbean", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Brazil", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", 
+                               "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Americas, countries other than the United States of America - other countries", "Europe - other countries", "Belgium", "France", "Germany", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Netherlands",
+                               "Switzerland", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries",
+                               "Scandinavia", "Europe - other countries", "Scandinavia", "Europe - other countries", "Scandinavia", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Scandinavia", "Europe - other countries", "Europe - other countries", "Scandinavia", "United Kingdom", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Italy", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", 
+                               "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Europe - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries",
+                               "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Northern Africa", "Northern Africa", "Northern Africa",
+                               "Northern Africa", "Northern Africa", "Northern Africa", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Africa - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries",
+                               "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "China", "Hong Kong", "Japan", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", 
+                               "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Southern Asia", "Southern Asia", "Southern Asia", "India", "Southern Asia", "Southern Asia", "Southern Asia", "Southern Asia", "Southern Asia", "Australia", "New Zealand", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", 
+                               "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", 
+                               "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries", 
+                               "Asia and Oceania - other countries", "Asia and Oceania - other countries", "Asia and Oceania - other countries"))
+```
+
 
 ```{r}
 gts_s <- gts_current_ctry_NES %>%
@@ -96,51 +215,142 @@ gts_v <- gts_current_ctry_NES %>%
 
 gts_spend_per <- gts_s %>%
   left_join(gts_v, by = c("loc_code", "date", "orig_code")) %>%
+  left_join(ctry_def3, by = c("orig_code")) %>%
+  group_by(loc_code, date, s_ttl) %>%
+  summarise(s = sum(s, na.rm = TRUE),
+            v= sum(v, na.rm = TRUE),
+            .groups =  "drop") %>%
+  ungroup() %>%
   mutate(gts_spend_per = s/v) %>%
-  group_by(loc_code, orig_code) %>%
+  group_by(loc_code, s_ttl) %>%
   mutate(growth = gts_spend_per/gts_spend_per[date == "2023-01-01"]) %>%
   ungroup() %>%
-  select(date, orig_code, growth)
+  select(date, s_ttl, growth)
 
+test_gts <- data.frame(orig_code = unique(gts_spend_per$orig_code)) 
+  
 #use Netherlands to fill Belgium
 gts_bel <- gts_spend_per %>%
-  filter(orig_code == "NLD") %>%
-  mutate(orig_code = "BEL")
+  filter(s_ttl == "Netherlands") %>%
+  mutate(s_ttl = "Belgium")
 
 gts_spend_per_complete <- gts_spend_per %>%
-  filter(orig_code != "BEL") %>%
+  filter(s_ttl != "Belgium") %>%
   rbind(gts_bel)
 ```
 
 #complete the date
 ```{r}
+hold_geo <- ctry_v %>%
+  select(geo) %>%
+  filter(geo != "Canada") %>%
+  distinct() %>%
+  mutate(temp = 1)
+
 df_hold <- s_hist3 %>%
-  select(geo, date, orig_code, area_of_residence, low_lev_reg) %>%
-  complete(nesting(geo, orig_code, area_of_residence, low_lev_reg), date = seq.Date(from=as.Date("2018-01-01"), to=as.Date("2034-01-01"), by="year"))
+  select(date, area_of_residence) %>%
+  mutate(temp = 1) %>%
+  left_join(hold_geo, by = c("temp")) %>%
+  complete(nesting(geo, area_of_residence,temp), date = seq.Date(from=as.Date("2018-01-01"), to=as.Date("2034-01-01"), by="year")) %>%
+  select(-temp)
 ```
 
-#country spending forecast complete
+
+#country to provinces spending forecast complete
 ```{r}
-s_forecast1 <- df_hold %>%
-  left_join(select(ctry_v, geo, orig_code, date, v = value), by = c("geo", "orig_code", "date")) %>%
-  left_join(select(s_hist3, geo, orig_code, date, s = value, spend_per), by = c("geo", "orig_code", "date")) %>%
-  left_join(gts_spend_per_complete, by = c("orig_code", "date")) %>%
-  group_by(geo, orig_code) %>%
+s_pro_1 <- df_hold %>%
+  left_join(final_org_ctry_v, by = c("geo", "area_of_residence" = "country_of_residence", "date")) %>%  #visits
+  left_join(select(s_hist3, date, area_of_residence, spend_per), by = c("area_of_residence", "date")) %>%                       #spending
+  left_join(gts_spend_per_complete, by = c("area_of_residence" = "s_ttl", "date")) %>%                                                          #to forecast
+  group_by(geo, area_of_residence) %>%
   mutate(revised_spend_per = case_when(date <= "2023-01-01" ~ spend_per,
                                date >= "2024-01-01"~ spend_per[date == "2023-01-01"] * growth)) %>%
   ungroup() %>%
-  mutate(s_forecast = v * revised_spend_per, 
-         gap = s_forecast - s) %>%
-  select(-c(s,spend_per, growth, gap))
+  mutate(s_forecast = v * revised_spend_per) %>%
+  select(-c(spend_per, growth))
+
+s_can_1 <- s_pro_1 %>%
+  group_by(area_of_residence, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),
+            s_forecast = sum(s_forecast, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(geo = "Canada", .before = area_of_residence) %>%
+  mutate(revised_spend_per = s_forecast/v, .before = s_forecast)
+
+s_forecast <- s_pro_1 %>%
+  rbind(s_can_1)
 ```
 
-#region history
+
+#See if sum of provinces matches history for countries into Canada 
 ```{r}
-s_reg_hist1 <- s_hist1 %>%
-  filter(is.na(orig_code)) %>%
-  filter(year <= 2023) %>%
+test2 <- s_can_1 %>%
+  filter(date <= "2023-01-01") %>%
+  left_join(s_hist3, by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap_s = s_forecast - value)  #gap is very small, except Africa
+```
+
+```{r}
+reg_def2 <- data.frame(s_ttl= c("Americas, countries other than the United States of America - other countries", "Mexico", "Caribbean", "Brazil", "Europe - other countries", "Belgium", "France", "Germany", "Netherlands", "Switzerland", "Scandinavia", "United Kingdom", "Italy", "Africa - other countries", "Northern Africa", "Asia and Oceania - other countries", "China", "Hong Kong", "Japan", "Southern Asia", "India", "Australia", "New Zealand"),
+                             s_high_lev_reg=c("Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Africa", "Africa", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania"))
+```
+
+#aggregate region
+```{r}
+s_forecast_reg <- s_forecast %>%
+  left_join(reg_def2, by = c("area_of_residence" = "s_ttl")) %>%
+  group_by(geo, s_high_lev_reg, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),
+            s_forecast = sum(s_forecast, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(revised_spend_per = s_forecast/v, .after = v) %>%
+  rename(area_of_residence = s_high_lev_reg)
+
+s_forecast_ovs <- s_forecast_reg %>%
+  group_by(geo, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),
+            s_forecast = sum(s_forecast, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(revised_spend_per = s_forecast/v, .after = v) %>%
+  mutate(area_of_residence = "Residents of countries other than the United States of America", .after = geo)
+
+s_forecast_tot <- s_forecast %>%
+  filter(area_of_residence == "United States of America residents, tourists (overnight)") %>%
+  rbind(s_forecast_ovs) %>%
+  group_by(geo, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),
+            s_forecast = sum(s_forecast, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(revised_spend_per = s_forecast/v, .after = v) %>%
+  mutate(area_of_residence = "Non-resident visitors to Canada", .after = geo)
+```
+
+```{r}
+s_forecast_complete <- s_forecast %>%
+  rbind(s_forecast_reg, s_forecast_ovs, s_forecast_tot)
+```
+
+
+#see if province matches total international history
+```{r}
+spend_pro_annual <- spend_pro_data3 %>%
+  group_by(year, geo, area_of_residence) %>%
+  summarise(value = sum(value, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
   mutate(date = as.Date(paste0(year, "-01-01"))) %>%
-  select(-c(year, orig_code, low_lev_reg))
+  select(-year) %>%
+  mutate(ttl = ifelse(area_of_residence == "United States of America residents", "United States of America residents, tourists (overnight)", area_of_residence))
+  
+test3 <- s_forecast_complete %>%
+  filter(area_of_residence %in% c("United States of America residents, tourists (overnight)", "Residents of countries other than the United States of America", "Non-resident visitors to Canada") & date <= "2023-01-01") %>%
+  left_join(spend_pro_annual, by = c("geo", "area_of_residence" = "ttl", "date")) %>%
+  mutate(gap = value - s_forecast)
+  
 ```
 
 ```{r}
