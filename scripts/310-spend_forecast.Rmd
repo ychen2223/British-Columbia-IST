@@ -300,6 +300,7 @@ reg_def2 <- data.frame(s_ttl= c("Americas, countries other than the United State
 ```{r}
 s_forecast_reg <- s_forecast %>%
   left_join(reg_def2, by = c("area_of_residence" = "s_ttl")) %>%
+  filter(area_of_residence != "United States of America residents, tourists (overnight)") %>%
   group_by(geo, s_high_lev_reg, date) %>%
   summarise(v = sum(v, na.rm = TRUE),
             s_forecast = sum(s_forecast, na.rm = TRUE),
@@ -331,7 +332,8 @@ s_forecast_tot <- s_forecast %>%
 
 ```{r}
 s_forecast_complete <- s_forecast %>%
-  rbind(s_forecast_reg, s_forecast_ovs, s_forecast_tot)
+  rbind(s_forecast_reg, s_forecast_ovs, s_forecast_tot) %>%
+  mutate(revised_spend_per = ifelse(is.na(revised_spend_per), 0, revised_spend_per))
 ```
 
 
@@ -354,6 +356,11 @@ test3 <- s_forecast_complete %>%
 ```
 
 ```{r}
+colSums(is.na(s_forecast_complete))
+```
 
+```{r}
+write_rds(s_forecast_complete, here("output_data", "s_forecast_complete.rds"))
+write.csv(s_forecast_complete, here(path(path_te_shared, path_output), "s_forecast_complete.csv"))
 ```
 

@@ -332,7 +332,7 @@ ttl_int <- ctry_v %>%
   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
   mutate(orig_code = NA, 
-         country_of_residence = "Total international", 
+         country_of_residence = "Non-resident visitors entering Canada", 
          low_lev_reg = NA, 
          high_lev_reg = NA,  
          traveller_type = NA, ) %>%
@@ -374,5 +374,8 @@ write_rds(non_US_v, here("output_data", "non_US_v.rds"))
 
 write_rds(final_df_v, here("output_data", "final_df_v.rds"))
 write.csv(final_df_v, here(path(path_te_shared, path_output), "final_df_v.csv"))
+
+write.csv(pro_share, here(path(path_te_shared, path_output), "pro_share.csv"))
+
 ```
 
