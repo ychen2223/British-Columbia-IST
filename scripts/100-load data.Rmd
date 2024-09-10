@@ -24,7 +24,7 @@ non_us_data <- read_csv(path(path_te_shared, path_raw_data,"can_province_non_us.
   janitor::clean_names()
 
 
-spend_data <- read_csv(path(path_te_shared, path_raw_data,"spend.csv")) %>%
+spend_data <- read_csv(path(path_te_shared, path_raw_data,"spend_can.csv")) %>%
   janitor::clean_names()
 spend_pro_data <- read_csv(path(path_te_shared, path_raw_data,"spend_pro.csv")) %>%
   janitor::clean_names()
