@@ -156,7 +156,7 @@ ctry_def2 <- data.frame(orig_code= c("GRL", "MEX", "SPM", "BLZ", "CRI", "SLV", "
 ```{r}
 gts_v_rest_reg <- gts_v %>%
   left_join(ctry_def2, by = c("orig_code")) %>%
-  filter(orig_code != unique(df3$orig_code)) %>%
+  filter(!orig_code %in% unique(df3$orig_code)) %>%
   group_by(date, low_lev_reg) %>%
   summarise(sum_rest_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
@@ -340,7 +340,7 @@ ttl_int <- ctry_v %>%
 ```
 
 ```{r}
-final_df_v <- ctry_v %>%
+final_1 <- ctry_v %>%
   rbind(low_lev_reg_v) %>%
   rbind(low_lev_reg_v_rest) %>%
   rbind(high_lev_reg_v) %>%
@@ -348,6 +348,23 @@ final_df_v <- ctry_v %>%
   rbind(non_US_v) %>%
   rbind(ttl_int)
 
+```
+
+#calculate Canada
+```{r}
+final_can <- final_1 %>%
+  filter(geo != "Canada") %>%
+  group_by(orig_code, country_of_residence, low_lev_reg, high_lev_reg, traveller_type, date) %>%
+  summarise(value = sum(value, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(geo = "Canada", .before = orig_code)
+```
+
+```{r}
+final_df_v <- final_1 %>%
+  filter(geo != "Canada") %>%
+  rbind(final_can)
 ```
 
 ```{r}

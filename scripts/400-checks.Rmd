@@ -17,10 +17,60 @@ source(here("scripts", "set_vars.R"))
 
 ```{r}
 final_df_v<- read_rds(here("output_data", "final_df_v.rds"))
-s_forecast_complete<- read_rds(here("output_data", "s_forecast_complete.rds"))
+final_df_s<- read_rds(here("output_data", "final_df_s.rds"))
+
+
+#source data
+ctry_tour <- read_rds(here("output_data", "ctry_tour.rds"))
+reg_tour <- read_rds(here("output_data", "reg_tour.rds"))
+
+reg_def <- read_rds(here("output_data", "reg_def.rds"))
+
+non_us_data3 <- read_rds(here("output_data", "non_us_data3.rds"))
+```
+
+#check sum of provinces and total Canada
+```{r}
+check_v_1 <- final_df_v %>%
+  filter(geo != "Canada") %>%
+  group_by(country_of_residence, date) %>%
+  summarise(sum_v = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(final_df_v %>%filter(geo == "Canada"), by = c("country_of_residence", "date")) %>%
+  mutate(gap_v = value - sum_v)
 ```
 
 ```{r}
+check_s_1 <- final_df_s %>%
+  filter(geo != "Canada") %>%
+  group_by(area_of_residence, date) %>%
+  summarise(sum_v = sum(v, na.rm = TRUE),
+            sum_s = sum(s_forecast, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  left_join(final_df_s %>%filter(geo == "Canada"), by = c("area_of_residence", "date")) %>%
+  mutate(gap_v = v - sum_v,
+         gap_s = s_forecast - sum_s)
+```
 
+#check with source data
+```{r}
+check_v_2_ctry <- ctry_tour %>%
+  left_join(select(final_df_v, geo, orig_code, date, v_cal = value), by = c("geo", "orig_code", "date")) %>%
+  mutate(gap_v = value - v_cal)
+
+check_v_2_reg <- reg_tour %>%
+  left_join(select(final_df_v, geo, country_of_residence, date, v_cal = value), by = c("geo", "country_of_residence", "date")) %>%
+  mutate(gap_v = value - v_cal)
+
+check_v_2_ovs <- non_us_data3 %>%
+  filter(year <= 2023) %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  group_by(date, geo, country_of_residence) %>%
+  summarise(value = sum(value, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  left_join(select(final_df_v, geo, country_of_residence, date, v_cal = value), by = c("geo", "country_of_residence", "date")) %>%
+  mutate(gap_v = value - v_cal)
 ```
 

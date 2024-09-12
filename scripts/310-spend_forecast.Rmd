@@ -458,11 +458,11 @@ ratio_can_complete <- ratio_ovs_complete %>%
 ```{r}
 ratio_control <- df_hold %>%
   left_join(final_org_ctry_v, by = c("geo", "area_of_residence" = "country_of_residence", "date")) %>%                          #visits
-  left_join(ratio_can_complete, by = c("geo", "date")) %>%                                        #to forecast
+  left_join(ratio_can_complete, by = c("geo", "date")) %>%                                                                      #to forecast
   mutate(ratio = case_when(area_of_residence == "United States of America residents, tourists (overnight)" ~ us_ratio,
                            TRUE ~ ovs_ratio)) %>%
   select(-c(ovs_ratio, us_ratio)) %>%
-  mutate(ratio = ifelse(v == 0 & area_of_residence != "Not elsewhere specified", 0, ratio)) %>%
+  # mutate(ratio = ifelse(v == 0 & area_of_residence != "Not elsewhere specified" & geo != "Not specified province", 0, ratio)) %>%
   group_by(area_of_residence, date) %>%
   mutate(ratio_sum = sum(ratio, na.rm = TRUE)) %>%
   ungroup() %>%
@@ -476,23 +476,45 @@ s_pro_1 <- df_hold %>%
   left_join(final_org_ctry_v, by = c("geo", "area_of_residence" = "country_of_residence", "date")) %>%                          #visits
   left_join(select(s_hist4, date, area_of_residence, s = value), by = c("area_of_residence", "date")) %>%                       #spending
   left_join(ratio_control, by = c("geo", "area_of_residence", "date")) %>%                                                      #split total Canada
-  left_join(gts_spend_per_complete, by = c("area_of_residence" = "s_ttl", "date")) %>% 
+  left_join(gts_spend_per_complete, by = c("area_of_residence" = "s_ttl", "date")) %>%
   mutate(v = ifelse(is.na(v), 0, v),
          revised_s = s*ratio,
-         # revised_s = case_when(area_of_residence == "United States of America residents, tourists (overnight)" ~ s,           #the ratio is just to control for overseas
-         #                       TRUE ~ s*ratio),
          revised_spend_per = ifelse(is.na(revised_s/v) | is.infinite(revised_s/v),0,revised_s/v)) %>%
   group_by(geo, area_of_residence) %>%
   mutate(revised_spend_per = case_when(date <= "2023-01-01" ~ revised_spend_per,
                                date >= "2024-01-01"~ revised_spend_per[date == "2023-01-01"] * growth)) %>%
   ungroup() %>%
-  mutate(revised_s = case_when(area_of_residence == "Not elsewhere specified" ~ revised_s,
+  mutate(revised_s = case_when(area_of_residence == "Not elsewhere specified" | geo == "Not specified province"| date <= "2023-01-01" ~ revised_s,
                                TRUE ~ v * revised_spend_per)) %>%
   select(-c(s, ratio, growth)) %>%
   mutate(revised_s = ifelse(is.na(revised_s), 0, revised_s),
          revised_spend_per = ifelse(is.na(revised_spend_per), 0, revised_spend_per)) %>%
   rename(s_forecast = revised_s)
   
+
+# s_pro_1 <- df_hold %>%
+#   filter(date <= "2023-01-01") %>%
+#   left_join(final_org_ctry_v, by = c("geo", "area_of_residence" = "country_of_residence", "date")) %>%                          #visits
+#   left_join(select(s_hist4, date, area_of_residence, s = value), by = c("area_of_residence", "date")) %>%                       #spending
+#   left_join(ratio_control, by = c("geo", "area_of_residence", "date")) %>%                                                      #split total Canada
+#   left_join(gts_spend_per_complete, by = c("area_of_residence" = "s_ttl", "date")) %>%
+#   mutate(v = ifelse(is.na(v), 0, v),
+#          revised_s = s*ratio
+#          # ,
+#          # revised_spend_per = ifelse(is.na(revised_s/v) | is.infinite(revised_s/v),0,revised_s/v)
+#          ) %>%
+#   # group_by(geo, area_of_residence) %>%
+#   # mutate(revised_spend_per = case_when(date <= "2023-01-01" ~ revised_spend_per,
+#   #                              date >= "2024-01-01"~ revised_spend_per[date == "2023-01-01"] * growth)) %>%
+#   # ungroup() %>%
+#   # mutate(revised_s = case_when(area_of_residence == "Not elsewhere specified" | geo == "Not specified province" ~ revised_s,
+#   #                              TRUE ~ v * revised_spend_per)) %>%
+#   select(-c(s, ratio, growth)) %>%
+#   mutate(revised_s = ifelse(is.na(revised_s), 0, revised_s)
+#          # ,
+#          # revised_spend_per = ifelse(is.na(revised_spend_per), 0, revised_spend_per)
+#          ) %>%
+#   rename(s_forecast = revised_s)
 
 s_can_1 <- s_pro_1 %>%
   group_by(area_of_residence, date) %>%
@@ -594,27 +616,87 @@ test3 <- s_forecast_complete %>%
   
 ```
 
+#see if province matches overseas history, create a better raw data spending dataset
 ```{r}
-colSums(is.na(s_forecast_complete))
-```
-#Method2
-```{r}
-# s_pro_1 <- df_hold %>%
-#   left_join(final_org_ctry_v, by = c("geo", "area_of_residence" = "country_of_residence", "date")) %>%                          #visits
-#   left_join(select(s_hist4, date, area_of_residence, s = value, spend_per), by = c("area_of_residence", "date")) %>%                       #spending
-#   left_join(gts_spend_per_complete, by = c("area_of_residence" = "s_ttl", "date")) %>%                                          #to forecast
-#   group_by(geo, area_of_residence) %>%
-#   mutate(v = ifelse(is.na(v), 0, v),
-#          revised_spend_per = case_when(date <= "2023-01-01" ~ spend_per,
-#                                date >= "2024-01-01"~ spend_per[date == "2023-01-01"] * growth)) %>%
-#   ungroup() %>%
-#   mutate(s_forecast = case_when(area_of_residence == "Not elsewhere specified" ~ s,
-#                                TRUE ~ v * revised_spend_per)) %>%
-#   select(-c(spend_per, growth))
+#aggregate to annual data
+spend_ovs_pro_annual <- spend_pro_data3 %>%
+  filter(area_of_residence == "Residents of countries other than the United States of America" & year <= 2023) %>%
+  group_by(year, geo, area_of_residence) %>%
+  summarise(value = sum(value, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  select(-year)
+
+s_nes_pro <- test1 %>%
+  mutate(geo = "Not specified province",
+         area_of_residence = "Residents of countries other than the United States of America",
+         date = as.Date(paste0(year, "-01-01")),
+         value = gap) %>%
+  select(geo, area_of_residence, date, value)
+
+s_nes_pro$value[s_nes_pro$date == "2022-01-01"] <- 0
+
+s_can_agg <- spend_ovs_pro_annual %>%
+  filter(geo != "Canada" & date == "2022-01-01") %>%
+  group_by(area_of_residence, date) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup()
+
+spend_ovs_pro_annual_complete <- spend_ovs_pro_annual %>%
+  rbind(s_nes_pro)
+
+spend_ovs_pro_annual_complete$value[spend_ovs_pro_annual_complete$date == "2022-01-01" & spend_ovs_pro_annual_complete$geo == "Canada"] <- s_can_agg$value
 ```
 
 ```{r}
-write_rds(s_forecast_complete, here("output_data", "s_forecast_complete.rds"))
-write.csv(s_forecast_complete, here(path(path_te_shared, path_output), "s_forecast_complete.csv"))
+# need the s_forecast_3_pro_re calculated previously
+test4 <- s_forecast_complete %>%
+  rbind(s_forecast_3_pro) %>%
+  filter(area_of_residence %in% c("Residents of countries other than the United States of America") & date <= "2023-01-01" & !(geo %in% c("Yukon", "Northwest Territories", "Nunavut"))) %>%
+  left_join(spend_ovs_pro_annual_complete, by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap = value - s_forecast) %>%
+  filter(area_of_residence == "Residents of countries other than the United States of America")
+
+```
+
+
+```{r}
+provinces_3 <- s_forecast_complete %>%
+  filter(geo %in% c("Yukon", "Northwest Territories", "Nunavut")) %>%
+  group_by(area_of_residence, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),
+            s_forecast = sum(s_forecast, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(revised_spend_per = ifelse(is.na(s_forecast/v) | is.infinite(s_forecast/v), 0, s_forecast/v)) %>%
+  mutate(geo = "Yukon, Northwest Territories and Nunavut", .before = area_of_residence)
+
+s_forecast_complete2 <- s_forecast_complete %>%
+  filter(!(geo %in% c("Yukon", "Northwest Territories", "Nunavut"))) %>%
+  rbind(provinces_3)
+```
+
+
+```{r}
+# need the s_forecast_3_pro_re calculated previously
+test5 <- s_forecast_complete2 %>%
+  filter(area_of_residence %in% c("Residents of countries other than the United States of America") & date <= "2023-01-01" & !(geo %in% c("Yukon", "Northwest Territories", "Nunavut"))) %>%
+  left_join(spend_ovs_pro_annual_complete, by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap = value - s_forecast) %>%
+  filter(area_of_residence == "Residents of countries other than the United States of America")
+
+
+```
+```{r}
+colSums(is.na(s_forecast_complete2))
+```
+```{r}
+final_df_s <- s_forecast_complete2
+```
+
+```{r}
+write_rds(final_df_s, here("output_data", "final_df_s.rds"))
+write.csv(final_df_s, here(path(path_te_shared, path_output), "final_df_s.csv"))
 ```
 
