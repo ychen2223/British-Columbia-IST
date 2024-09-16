@@ -176,9 +176,14 @@ ata <- gts_v_rest_reg %>%
   mutate(low_lev_reg = "Antarctica and Adjacent Islands Region") %>%
   select(-c(sum_rest_reg))
 
+nma <- gts_v_rest_reg %>%
+  filter(low_lev_reg == "Western Europe") %>%
+  mutate(low_lev_reg = "North America, countries other than the United States of America") %>%
+  select(-c(sum_rest_reg))
+
 complete_rest_growth <- gts_v_rest_reg %>%
   select(-c(sum_rest_reg)) %>%
-  rbind(ata) %>%
+  rbind(ata, nma) %>%
   left_join(oce, by = c("date", "low_lev_reg")) %>%
   mutate(growth = ifelse(is.na(growth_oce), growth, growth_oce)) %>%
   select(-c(growth_oce))
@@ -392,6 +397,7 @@ write_rds(non_US_v, here("output_data", "non_US_v.rds"))
 write_rds(final_df_v, here("output_data", "final_df_v.rds"))
 write.csv(final_df_v, here(path(path_te_shared, path_output), "final_df_v.csv"))
 
+write_rds(ctry_def2, here("output_data", "ctry_def2.rds"))
 
 ```
 

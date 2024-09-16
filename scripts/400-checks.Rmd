@@ -20,13 +20,21 @@ final_df_v<- read_rds(here("output_data", "final_df_v.rds"))
 final_df_s<- read_rds(here("output_data", "final_df_s.rds"))
 
 
-#source data
+#source data-visits
 ctry_tour <- read_rds(here("output_data", "ctry_tour.rds"))
 reg_tour <- read_rds(here("output_data", "reg_tour.rds"))
-
-reg_def <- read_rds(here("output_data", "reg_def.rds"))
-
 non_us_data3 <- read_rds(here("output_data", "non_us_data3.rds"))
+
+#source data-spending
+spend_data3 <- read_rds(here("output_data", "spend_data3.rds"))
+spend_pro_data3 <- read_rds(here("output_data", "spend_pro_data3.rds"))
+
+#current gts for Canada
+gts_current_ctry_NES <- read_rds(here("output_data", "gts_current_ctry_NES.rds")) 
+
+#reference
+ctry_def2<- read_rds(here("output_data", "ctry_def2.rds"))
+reg_def <- read_rds(here("output_data", "reg_def.rds"))
 ```
 
 #check sum of provinces and total Canada
@@ -53,12 +61,17 @@ check_s_1 <- final_df_s %>%
          gap_s = s_forecast - sum_s)
 ```
 
-#check with source data
+#check with source data-visits
 ```{r}
+#compare country visits to Canada and provinces
+#the gap is from sum provinces and total Canada difference from raw data
 check_v_2_ctry <- ctry_tour %>%
   left_join(select(final_df_v, geo, orig_code, date, v_cal = value), by = c("geo", "orig_code", "date")) %>%
   mutate(gap_v = value - v_cal)
 
+#compare region visits to Canada and provinces
+#sum of Yukon northern + central+... Africa is 88, not 69. So this gap is passed on to total Canada as well
+#sum of Yukon Australasia + ... in Oceania is 1084, not 1803. So this gap is passed on to total Canada as well
 check_v_2_reg <- reg_tour %>%
   left_join(select(final_df_v, geo, country_of_residence, date, v_cal = value), by = c("geo", "country_of_residence", "date")) %>%
   mutate(gap_v = value - v_cal)
@@ -72,5 +85,245 @@ check_v_2_ovs <- non_us_data3 %>%
   ungroup() %>%
   left_join(select(final_df_v, geo, country_of_residence, date, v_cal = value), by = c("geo", "country_of_residence", "date")) %>%
   mutate(gap_v = value - v_cal)
+```
+
+#check with source data-spending-1st dataset
+```{r}
+check_s_2_1 <- spend_data3 %>%
+  filter(year <= "2023-01-01") %>%
+  group_by(year, geo, area_of_residence) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  left_join(final_df_s, by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap_s = value - s_forecast)
+#the big gap is from "Non-resident visitors to Canada", which in statcan includes same day US tourists as well. It makes sense it doesn't align
+#other gaps comes from: statcan region is missing for some period while countries have numbers. I overwrite the region
+#US overnight and countries aligns
+```
+
+#check with source data-spending-2st dataset
+```{r}
+check_s_2_2 <- spend_pro_data3 %>%
+  filter(year <= "2023-01-01" & area_of_residence == "Residents of countries other than the United States of America") %>%
+  group_by(year, geo, area_of_residence) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(date = as.Date(paste0(year, "-01-01"))) %>%
+  left_join(final_df_s, by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap_s = value - s_forecast)
+#let's say 2018 Canada overseas should be 11479945 (sum up everything under overseas in 1st dataset), 4 more than overseas in second dataset. I distributed the gap to each province.
+```
+
+
+```{r}
+#make the region better
+final_df_v_process1 <- final_df_v %>%
+  mutate(low_lev_reg = case_when(str_detect(country_of_residence, 'Rest of') & !is.na(low_lev_reg) ~ gsub("Rest of ", "", low_lev_reg),
+                                 TRUE ~ low_lev_reg),
+         high_lev_reg = case_when(str_detect(country_of_residence, 'Rest of') & is.na(low_lev_reg) ~ gsub("Rest of ", "", high_lev_reg),
+                                 TRUE ~ high_lev_reg)) %>%
+  left_join(select(reg_def, low_lev_reg, join_reg = high_lev_reg), by = c("low_lev_reg")) %>%
+  mutate(high_lev_reg = ifelse((str_detect(country_of_residence, 'Rest of') & is.na(low_lev_reg) | country_of_residence %in% unique(join_reg)), high_lev_reg, join_reg)) %>%
+  mutate(low_lev_reg = ifelse(country_of_residence == "United States of America residents entering Canada", NA, low_lev_reg)) %>%
+  select(-c(traveller_type, join_reg))
+
+ v_ref_for_client <- final_df_v_process1 %>%
+   select(orig_code, country_of_residence, low_lev_reg, high_lev_reg) %>%
+   distinct()
+```
+
+#check sum of country and rest of region, and compare with low lev region
+```{r}
+check_v_3_1 <- final_df_v_process1 %>%
+  filter(!(country_of_residence %in% unique(reg_def$low_lev_reg)) & !is.na(low_lev_reg)) %>%
+  group_by(geo, low_lev_reg, date) %>%
+  summarise(v_sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(select(final_df_v_process1, geo, country_of_residence, date, value), by = c("geo", "low_lev_reg" = "country_of_residence", "date")) %>%
+  mutate(gap_v = value - v_sum)
+```
+
+#check sum of low lev reg, and compare with high lev region
+```{r}
+check_v_3_2 <- check_v_3_1 %>%
+  select(-c(value, gap_v)) %>%
+  left_join(reg_def, by = c("low_lev_reg")) %>%
+  group_by(geo, high_lev_reg, date) %>%
+  summarise(v_sum = sum(v_sum, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(select(final_df_v_process1, geo, country_of_residence, date, value), by = c("geo", "high_lev_reg" = "country_of_residence", "date")) %>%
+  mutate(gap_v = value - v_sum)
+```
+
+#check sum of high lev reg, and compare with overseas
+```{r}
+check_v_3_3 <- check_v_3_2 %>%
+  select(-c(value, high_lev_reg, gap_v)) %>%
+  group_by(geo, date) %>%
+  summarise(v_sum = sum(v_sum, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Residents of countries other than the United States of America entering Canada") %>%
+  left_join(select(final_df_v_process1, geo, country_of_residence, date, value), by = c("geo", "country_of_residence", "date")) %>%
+  mutate(gap_v = value - v_sum)
+```
+
+#check sum of overseas and USA, and compare with total international
+```{r}
+check_v_3_4 <- final_df_v_process1 %>%
+  filter(country_of_residence %in% c("Residents of countries other than the United States of America entering Canada", "United States of America residents entering Canada")) %>%
+  group_by(geo, date) %>%
+  summarise(v_sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Non-resident visitors entering Canada") %>%
+  left_join(select(final_df_v_process1, geo, country_of_residence, date, value), by = c("geo", "country_of_residence", "date")) %>%
+  mutate(gap_v = value - v_sum)
+```
+
+
+#check sum of things in spending
+```{r}
+reg_agg <- data.frame(s_ttl= c("Brazil", "Caribbean", "Mexico", "Americas, countries other than the United States of America - other countries", "Belgium", "France", "Germany", "Italy", "Netherlands", "Scandinavia", "Switzerland", "United Kingdom", "Europe - other countries", "Northern Africa", "Africa - other countries", "Australia", "China", "Hong Kong", "India", "Japan", "New Zealand", "Southern Asia", "Asia and Oceania - other countries", "Not elsewhere specified", "Antarctica and Adjacent Islands - other countries"),
+                       s_reg=c("Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Africa", "Africa", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Not elsewhere specified", "Antarctica and Adjacent Islands"))
+```
+
+#sum of country and rest of region, and compare with region
+```{r}
+check_s_3_1 <- final_df_s %>%
+  left_join(reg_agg, by = c("area_of_residence" = "s_ttl")) %>%
+  filter(!is.na(s_reg)) %>%
+  group_by(geo, s_reg, date) %>%
+  summarise(v_sum = sum(v, na.rm = TRUE),
+            s_sum = sum(s_forecast, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(select(final_df_s, geo, area_of_residence, date, v, s_forecast), by = c("geo", "s_reg" = "area_of_residence", "date")) %>%
+  mutate(gap_v = v - v_sum,
+         gap_s = s_forecast - s_sum)
+```
+
+#sum of region, and compare with overseas
+```{r}
+check_s_3_2 <- check_s_3_1 %>%
+  group_by(geo, date) %>%
+  summarise(v_sum = sum(v_sum, na.rm = TRUE),
+            s_sum = sum(s_sum, na.rm = TRUE), .groups = "drop") %>%
+  mutate(area_of_residence = "Residents of countries other than the United States of America") %>%
+  ungroup() %>%
+  left_join(select(final_df_s, geo, area_of_residence, date, v, s_forecast), by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap_v = v - v_sum,
+         gap_s = s_forecast - s_sum)
+```
+
+#sum of overseas and USA, and compare total international
+```{r}
+check_s_3_3 <- final_df_s %>%
+  filter(area_of_residence %in% c("Residents of countries other than the United States of America", "United States of America residents, tourists (overnight)")) %>%
+  group_by(geo, date) %>%
+  summarise(v_sum = sum(v, na.rm = TRUE),
+            s_sum = sum(s_forecast, na.rm = TRUE), .groups = "drop") %>%
+  mutate(area_of_residence = "Non-resident visitors to Canada") %>%
+  ungroup() %>%
+  left_join(select(final_df_s, geo, area_of_residence, date, v, s_forecast), by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap_v = v - v_sum,
+         gap_s = s_forecast - s_sum)
+```
+
+#check negative values
+```{r}
+check_v_4 <- final_df_v_process1 %>%
+  mutate(v_neg = ifelse(value < 0, 1, 0))
+
+check_s_4 <- final_df_s %>%
+  mutate(v_neg = ifelse(v < 0, 1, 0),
+         s_neg = ifelse(s_forecast < 0, 1, 0))
+```
+
+#check for negative yoy growth
+```{r}
+check_v_5 <- final_df_v_process1 %>%
+  # select(loc_ttl, date, orig_ttl, v_est, s_est) %>%
+  group_by(geo, country_of_residence) %>%
+  mutate(prev_v = lag(value)) %>%
+  mutate(growth_v = value/prev_v) %>%
+  mutate(check_v = case_when(growth_v < 1 ~ 1,
+                             TRUE ~ 0)) %>%
+  ungroup() %>%
+  filter(date >= "2024-01-01")
+
+check_s_5 <- final_df_s %>%
+  # select(loc_ttl, date, orig_ttl, v_est, s_est) %>%
+  group_by(geo, area_of_residence) %>%
+  mutate(prev_v = lag(v),
+         prev_s = lag(s_forecast)) %>%
+  mutate(growth_v = v/prev_v,
+         growth_s = s_forecast/prev_s) %>%
+  mutate(check_v = case_when(growth_v < 1 ~ 1,
+                             TRUE ~ 0),
+         check_s = case_when(growth_s < 1 ~ 1,
+                             TRUE ~ 0)) %>%
+  ungroup() %>%
+  filter(date >= "2024-01-01")
+```
+
+#if v from final_v the same as v from final_s
+```{r}
+check_6 <- final_df_v_process1 %>%
+  filter(country_of_residence %in% c("United States of America residents entering Canada", "Residents of countries other than the United States of America entering Canada")) %>%
+  mutate(ttl = case_when(country_of_residence == "United States of America residents entering Canada" ~ "United States of America residents, tourists (overnight)",
+                         country_of_residence == "Residents of countries other than the United States of America entering Canada" ~ "Residents of countries other than the United States of America",
+                         TRUE ~ NA)) %>%
+  left_join(final_df_s, by = c("geo", "ttl" = "area_of_residence", "date")) %>%
+  mutate(gap_v = v-value) %>%
+  filter(date >= "2018-01-01")
+```
+
+
+#For comparison file
+#gts for visits dataset
+```{r}
+gts_v <- gts_current_ctry_NES %>%
+  filter(variable == "v" ) %>%
+  mutate(value = 1000*value)
+
+gts_v_rest_reg <- gts_v %>%
+  left_join(ctry_def2, by = c("orig_code")) %>%
+  filter(!orig_code %in% unique(df3$orig_code)) %>%
+  group_by(date, low_lev_reg) %>%
+  summarise(sum_rest_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  group_by(low_lev_reg) %>%
+  mutate(growth = sum_rest_reg/sum_rest_reg[date == "2023-01-01"]) %>%
+  ungroup()
+```
+
+#dataset for client
+```{r}
+final_v <- final_df_v_process1 %>%
+  rename(v = value) %>%
+  mutate(country_of_residence = ifelse(country_of_residence == "Türkiye", "Turkiye", country_of_residence))
+
+final_s <- final_df_s %>%
+  rename(country_of_residence = area_of_residence, 
+         s = s_forecast,
+         spend_per = revised_spend_per) %>%
+  mutate(spend_per = s/v *1000) %>%
+  mutate(spend_per = ifelse(is.na(spend_per) | is.infinite(spend_per), 0, spend_per))
+```
+
+```{r}
+v_ref <- v_ref_for_client
+s_ref <- reg_agg %>%
+  rename(country_of_residence = s_ttl)
+```
+
+```{r}
+write_rds(final_v, here(path(path_te_shared, path_output),"deliver", "final_v.rds"))
+write.csv(final_v, here(path(path_te_shared, path_output),"deliver", "final_v.csv"))
+
+write_rds(final_s, here(path(path_te_shared, path_output),"deliver", "final_s.rds"))
+write.csv(final_s, here(path(path_te_shared, path_output),"deliver", "final_s.csv"))
+
+write.csv(v_ref, here(path(path_te_shared, path_output),"deliver", "v_ref.csv"))
+write.csv(s_ref, here(path(path_te_shared, path_output),"deliver", "s_ref.csv"))
 ```
 

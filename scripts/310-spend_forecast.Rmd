@@ -46,47 +46,6 @@ test1 <- spend_pro_data3 %>%
   left_join(test1_can, by = c("year")) %>%
   mutate(gap = s_can - s_sum)
 
-# #sum Yukon, nw territories, and Nunavut
-# agg_pro_1 <- final_df_v %>%
-#   filter((geo == "Northwest Territories" | geo == "Nunavut" | geo == "Yukon") & country_of_residence == "Total international") %>%
-#   group_by(date) %>%
-#   mutate(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-#   ungroup() %>%
-#   mutate(geo2 = "Yukon, Northwest Territories and Nunavut") %>%
-#   select(geo, geo2, date, v = value)
-# 
-# agg_pro_2 <- final_df_v %>%
-#   filter(geo != "Northwest Territories" & geo != "Nunavut" & geo != "Yukon" & country_of_residence == "Total international") %>%
-#   select(geo, date, v = value) %>%
-#   mutate(geo2 = geo, .after = geo) %>%
-#   rbind(agg_pro_1) %>%
-#   rename(geo_true = geo)
-# 
-# #spend per visit is not very consistent and comparable
-# adr <- spend_pro_data3 %>%
-#   filter(area_of_residence == "Non-resident visitors to Canada" & year <= 2023) %>%
-#   group_by(year, geo) %>%
-#   summarise(s = sum(value, na.rm = TRUE), .groups = "drop") %>%
-#   ungroup() %>%
-#   mutate(date = as.Date(paste0(year, "-01-01"))) %>%
-#   left_join(agg_pro_2, by = c("geo" = "geo2", "date")) %>%
-#   mutate(spend_per = s/v) %>%
-#   filter(geo != "Canada")
-# 
-# adr_can <- adr %>%
-#   select(geo, s, v, date) %>%
-#   distinct() %>%
-#   group_by(date) %>%
-#   summarise(s = sum(s, na.rm = TRUE),
-#             v = sum(v, na.rm = TRUE),
-#             .groups = "drop") %>%
-#   ungroup() %>%
-#   mutate(spend_per_can = s/v)
-# 
-# adr_complete <- adr %>%
-#   left_join(select(adr_can, date, spend_per_can), by = c("date")) %>%
-#   mutate(adr_pct = spend_per/spend_per_can) %>%
-#   select(geo = geo_true, date, s, v, spend_per, spend_per_can, adr_pct)
 ```
 
 #country, rest of region, region to Canada history
