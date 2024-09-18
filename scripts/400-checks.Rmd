@@ -13,6 +13,7 @@ library(fs)
 library(readxl)
 
 source(here("scripts", "set_vars.R"))
+options(scipen=999)
 ```
 
 ```{r}
@@ -285,15 +286,15 @@ gts_v <- gts_current_ctry_NES %>%
   filter(variable == "v" ) %>%
   mutate(value = 1000*value)
 
-gts_v_rest_reg <- gts_v %>%
-  left_join(ctry_def2, by = c("orig_code")) %>%
-  filter(!orig_code %in% unique(df3$orig_code)) %>%
-  group_by(date, low_lev_reg) %>%
-  summarise(sum_rest_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
-  ungroup() %>%
-  group_by(low_lev_reg) %>%
-  mutate(growth = sum_rest_reg/sum_rest_reg[date == "2023-01-01"]) %>%
-  ungroup()
+# gts_v_rest_reg <- gts_v %>%
+#   left_join(ctry_def2, by = c("orig_code")) %>%
+#   filter(!orig_code %in% unique(df3$orig_code)) %>%
+#   group_by(date, low_lev_reg) %>%
+#   summarise(sum_rest_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
+#   ungroup() %>%
+#   group_by(low_lev_reg) %>%
+#   mutate(growth = sum_rest_reg/sum_rest_reg[date == "2023-01-01"]) %>%
+#   ungroup()
 ```
 
 #dataset for client
