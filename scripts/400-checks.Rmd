@@ -30,6 +30,10 @@ non_us_data3 <- read_rds(here("output_data", "non_us_data3.rds"))
 spend_data3 <- read_rds(here("output_data", "spend_data3.rds"))
 spend_pro_data3 <- read_rds(here("output_data", "spend_pro_data3.rds"))
 
+#processed source data-spending
+df_ctrl_ovs_f <- read_rds(here("output_data", "df_ctrl_ovs_f.rds"))
+df_ctrl2_complete_f <- read_rds(here("output_data", "df_ctrl2_complete_f.rds"))
+
 #current gts for Canada
 gts_current_ctry_NES <- read_rds(here("output_data", "gts_current_ctry_NES.rds")) 
 
@@ -116,6 +120,22 @@ check_s_2_2 <- spend_pro_data3 %>%
 #let's say 2018 Canada overseas should be 11479945 (sum up everything under overseas in 1st dataset), 4 more than overseas in second dataset. I distributed the gap to each province.
 ```
 
+#check with processed source data-spending-1st dataset
+```{r}
+check_s_2_1_processed <- df_ctrl2_complete_f %>%
+  filter(date <= "2023-01-01") %>%
+  left_join(final_df_s, by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap_s = value - s_forecast)
+```
+
+#check with processed source data-spending-2st dataset
+```{r}
+check_s_2_2_processed <- df_ctrl_ovs_f %>%
+  filter(date <= "2023-01-01" & area_of_residence == "Residents of countries other than the United States of America") %>%
+  left_join(final_df_s, by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap_s = value - s_forecast)
+#let's say 2018 Canada overseas should be 11479945 (sum up everything under overseas in 1st dataset), 4 more than overseas in second dataset. I distributed the gap to each province.
+```
 
 ```{r}
 #make the region better
@@ -183,21 +203,22 @@ check_v_3_4 <- final_df_v_process1 %>%
 
 
 #check sum of things in spending
+
 ```{r}
-reg_agg <- data.frame(s_ttl= c("Brazil", "Caribbean", "Mexico", "Americas, countries other than the United States of America - other countries", "Belgium", "France", "Germany", "Italy", "Netherlands", "Scandinavia", "Switzerland", "United Kingdom", "Europe - other countries", "Northern Africa", "Africa - other countries", "Australia", "China", "Hong Kong", "India", "Japan", "New Zealand", "Southern Asia", "Asia and Oceania - other countries", "Not elsewhere specified", "Antarctica and Adjacent Islands - other countries"),
-                       s_reg=c("Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Africa", "Africa", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Not elsewhere specified", "Antarctica and Adjacent Islands"))
+reg_def2 <- data.frame(s_ttl= c("Not elsewhere specified-country in Americas, countries other than the United States of America", "Americas, countries other than the United States of America - other countries", "Mexico", "Caribbean", "Brazil", "Europe - other countries", "Belgium", "France", "Germany", "Netherlands", "Switzerland", "Scandinavia", "United Kingdom", "Italy", "Not elsewhere specified-country in Europe", "Africa - other countries", "Northern Africa", "Not elsewhere specified-country in Africa", "Asia and Oceania - other countries", "China", "Hong Kong", "Japan", "Southern Asia", "India", "Australia", "New Zealand","Not elsewhere specified-country in Asia and Oceania", "Antarctica and Adjacent Islands - other countries", "Not elsewhere specified-country"),
+                             s_high_lev_reg=c("Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Africa", "Africa", "Africa", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Antarctica and Adjacent Islands", "Not elsewhere specified-region"))
 ```
 
 #sum of country and rest of region, and compare with region
 ```{r}
 check_s_3_1 <- final_df_s %>%
-  left_join(reg_agg, by = c("area_of_residence" = "s_ttl")) %>%
-  filter(!is.na(s_reg)) %>%
-  group_by(geo, s_reg, date) %>%
+  left_join(reg_def2, by = c("area_of_residence" = "s_ttl")) %>%
+  filter(!is.na(s_high_lev_reg)) %>%
+  group_by(geo, s_high_lev_reg, date) %>%
   summarise(v_sum = sum(v, na.rm = TRUE),
             s_sum = sum(s_forecast, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
-  left_join(select(final_df_s, geo, area_of_residence, date, v, s_forecast), by = c("geo", "s_reg" = "area_of_residence", "date")) %>%
+  left_join(select(final_df_s, geo, area_of_residence, date, v, s_forecast), by = c("geo", "s_high_lev_reg" = "area_of_residence", "date")) %>%
   mutate(gap_v = v - v_sum,
          gap_s = s_forecast - s_sum)
 ```
@@ -313,8 +334,8 @@ final_s <- final_df_s %>%
 
 ```{r}
 v_ref <- v_ref_for_client
-s_ref <- reg_agg %>%
-  rename(country_of_residence = s_ttl)
+s_ref <- reg_def2 %>%
+  rename(country_of_residence = s_high_lev_reg)
 ```
 
 ```{r}
