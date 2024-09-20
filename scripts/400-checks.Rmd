@@ -19,6 +19,7 @@ options(scipen=999)
 ```{r}
 final_df_v<- read_rds(here("output_data", "final_df_v.rds"))
 final_df_s<- read_rds(here("output_data", "final_df_s.rds"))
+final_df_s_0919<- read_rds(here("output_data", "final_df_s_0919.rds"))
 
 
 #source data-visits
@@ -39,8 +40,18 @@ gts_current_ctry_NES <- read_rds(here("output_data", "gts_current_ctry_NES.rds")
 
 #reference
 ctry_def2<- read_rds(here("output_data", "ctry_def2.rds"))
+ctry_def3<- read_rds(here("output_data", "ctry_def3.rds"))
 reg_def <- read_rds(here("output_data", "reg_def.rds"))
 ```
+
+#check diff
+```{r}
+check_us <- final_df_s %>%
+  left_join(final_df_s_0919, by = c("geo", "area_of_residence", "date")) %>%
+  mutate(gap_v = v.x-v.y,
+         gap_s = s_forecast.x-s_forecast.y)
+```
+
 
 #check sum of provinces and total Canada
 ```{r}
@@ -307,16 +318,93 @@ gts_v <- gts_current_ctry_NES %>%
   filter(variable == "v" ) %>%
   mutate(value = 1000*value)
 
+gts_ctry <- gts_v %>%
+  filter(orig_code %in% unique(ctry_tour$orig_code))
+
+gts_ovs <- gts_v %>%
+  filter(orig_ttl != "United States") %>%
+  group_by(loc_ttl, loc_code, date, variable) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(orig_ttl = "Overseas", 
+         orig_code = "OVS")
+
+gts_tot <- gts_v %>%
+  group_by(loc_ttl, loc_code, date, variable) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(orig_ttl = "Total international", 
+         orig_code = "TOT")
+
+gts_v_complete <- gts_ctry %>%
+  rbind(gts_ovs, gts_tot)
+
 # gts_v_rest_reg <- gts_v %>%
 #   left_join(ctry_def2, by = c("orig_code")) %>%
-#   filter(!orig_code %in% unique(df3$orig_code)) %>%
+#   filter(!orig_code %in% unique(ctry_tour$orig_code)) %>%
 #   group_by(date, low_lev_reg) %>%
 #   summarise(sum_rest_reg = sum(value, na.rm = TRUE), .groups = "drop") %>%
 #   ungroup() %>%
 #   group_by(low_lev_reg) %>%
 #   mutate(growth = sum_rest_reg/sum_rest_reg[date == "2023-01-01"]) %>%
 #   ungroup()
+
 ```
+
+#gts for spending dataset
+```{r}
+gts_s <- gts_current_ctry_NES %>%
+  filter(variable == "s") %>%
+  select(loc_code, date, orig_code, s = value)
+
+gts_spend_per <- gts_s %>%
+  filter(orig_code != "CAN") %>%
+  left_join(gts_v, by = c("loc_code", "date", "orig_code")) %>%
+  left_join(ctry_def3, by = c("orig_code")) %>%
+  group_by(loc_code, date, s_ttl) %>%
+  summarise(s = sum(s*1000000, na.rm = TRUE),
+            v= sum(value, na.rm = TRUE),
+            .groups =  "drop") %>%
+  ungroup() %>%
+  mutate(gts_spend_per = s/v*1000,
+         gts_spend_per = ifelse(is.na(gts_spend_per) | is.infinite(gts_spend_per), 0, gts_spend_per)) %>%
+  select(date, s_ttl, v, s, gts_spend_per)
+
+gts_spend_per_ovs <- gts_spend_per %>%
+  filter(s_ttl != "United States of America residents, tourists (overnight)") %>%
+  group_by(date) %>%
+  summarise(v = sum(v, na.rm = TRUE),
+            s = sum(s, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(gts_spend_per = s/v*1000,
+         gts_spend_per = ifelse(is.na(gts_spend_per) | is.infinite(gts_spend_per), 0, gts_spend_per)) %>%
+  mutate(s_ttl = "Overseas")
+
+gts_spend_per_tot <- gts_spend_per %>%
+  group_by(date) %>%
+  summarise(v = sum(v, na.rm = TRUE),
+            s = sum(s, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(gts_spend_per = s/v*1000,
+         gts_spend_per = ifelse(is.na(gts_spend_per) | is.infinite(gts_spend_per), 0, gts_spend_per)) %>%
+  mutate(s_ttl = "Total international")
+
+gts_s_complete <- gts_spend_per %>%
+  rbind(gts_spend_per_ovs, gts_spend_per_tot)
+
+# #use Netherlands to fill Belgium
+# gts_bel <- gts_spend_per %>%
+#   filter(s_ttl == "Netherlands") %>%
+#   mutate(s_ttl = "Belgium")
+# 
+# gts_spend_per_complete <- gts_spend_per %>%
+#   filter(s_ttl != "Belgium") %>%
+#   rbind(gts_bel)
+```
+
+
 
 #dataset for client
 ```{r}
@@ -347,5 +435,9 @@ write.csv(final_s, here(path(path_te_shared, path_output),"deliver", "final_s.cs
 
 write.csv(v_ref, here(path(path_te_shared, path_output),"deliver", "v_ref.csv"))
 write.csv(s_ref, here(path(path_te_shared, path_output),"deliver", "s_ref.csv"))
+
+
+write.csv(gts_v_complete, here(path(path_te_shared, path_output), "gts_v_complete.csv"))
+write.csv(gts_s_complete, here(path(path_te_shared, path_output), "gts_s_complete.csv"))
 ```
 

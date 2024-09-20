@@ -421,7 +421,7 @@ initial_s_pro_data <- df_hold %>%
   left_join(select(s_hist, date, area_of_residence, spend_per), by = c("area_of_residence", "date")) %>%              #spending
   mutate(v = ifelse(is.na(v), 0, v)) %>%
   mutate(s = v * spend_per,
-         s = ifelse(s == 0, 0.000000000000001, s)) %>%
+         s = ifelse(s == 0 & area_of_residence != "United States of America residents, tourists (overnight)", 0.000000000000001, s)) %>%
   rename(s_forecast = s)
   
 s_can_0 <- initial_s_pro_data %>%
@@ -691,5 +691,7 @@ write_rds(df_ctrl2_complete_f, here("output_data", "df_ctrl2_complete_f.rds"))
 
 ```{r}
 write.csv(spend_data3, here(path(path_te_shared, path_output), "spend_data3.csv"))
+write_rds(ctry_def3, here("output_data", "ctry_def3.rds"))
+
 ```
 

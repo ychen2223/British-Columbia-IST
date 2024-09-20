@@ -18,7 +18,7 @@ rmarkdown::render("scripts/200-history.Rmd")
 # 3. Estimate
 #################
 rmarkdown::render("scripts/300-visit_forecast.Rmd")
-rmarkdown::render("scripts/310-spend_forecast.Rmd")
+rmarkdown::render("scripts/310-new_spend_forecast.Rmd")
 
 
 #################
