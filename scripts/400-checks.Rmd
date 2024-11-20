@@ -408,7 +408,7 @@ gts_s_complete <- gts_spend_per %>%
 
 #dataset for client
 ```{r}
-final_v <- final_df_v_process1 %>%
+final_v0 <- final_df_v_process1 %>%
   rename(v = value) %>%
   mutate(country_of_residence = ifelse(country_of_residence == "Türkiye", "Turkiye", country_of_residence))
 
@@ -427,8 +427,9 @@ s_ref <- reg_def2 %>%
 ```
 
 ```{r}
-write_rds(final_v, here(path(path_te_shared, path_output),"deliver", "final_v.rds"))
-write.csv(final_v, here(path(path_te_shared, path_output),"deliver", "final_v.csv"))
+#our initial delivery to client
+write_rds(final_v0, here(path(path_te_shared, path_output),"deliver/archived", "final_v0.rds"))
+write.csv(final_v0, here(path(path_te_shared, path_output),"deliver/archived", "final_v0.csv"))
 
 write_rds(final_s, here(path(path_te_shared, path_output),"deliver", "final_s.rds"))
 write.csv(final_s, here(path(path_te_shared, path_output),"deliver", "final_s.csv"))

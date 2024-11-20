@@ -1,0 +1,116 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(dplyr)
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(here)
+library(fs)
+library(readxl)
+
+source(here("scripts", "set_vars.R"))
+```
+
+```{r}
+final_v0 <- read_rds(here(path(path_te_shared, path_output),"deliver/archived", "final_v0.rds"))
+```
+
+#there might be risks of underestimating gateway provines and overestimating non gateway provinces
+```{r}
+multi_pro <- data.frame(country_of_residence = c("Australia", "China", "France", "Germany", "Japan", "Korea, South", "Mexico", "United Kingdom", "United States of America residents entering Canada", "World", "Rest of world"),
+                        multi_pro = c(1.553638958, 1.367811403, 1.286062132, 1.48632437, 1.240585908, 1.34443047, 1.178129483, 1.39805177, 1.105865144, 1.176180739, 1.282219049))
+```
+
+```{r}
+ctry_list <- c("Australia", "China", "France", "Germany", "Japan", "Korea, South", "Mexico", "United Kingdom", "United States of America residents entering Canada")
+```
+
+#revise visits for non regions
+```{r}
+df1 <- final_v0 %>%
+  left_join(multi_pro, by = c("country_of_residence")) %>%
+  mutate(multi_pro = case_when(!(country_of_residence %in% ctry_list) ~ 1.282219049,  #rest of the world
+                               TRUE ~ multi_pro),
+         v_adj = v*multi_pro) %>%
+  filter(!(country_of_residence %in% final_v0$low_lev_reg) & !(country_of_residence %in% final_v0$high_lev_reg) & !(country_of_residence %in% c("Non-resident visitors entering Canada", "Residents of countries other than the United States of America entering Canada"))) %>%
+  select(-c(multi_pro))
+```
+
+```{r}
+df1 %>%
+  select(country_of_residence, multi_pro) %>%
+  unique()
+```
+
+```{r}
+df1 %>%
+  select(country_of_residence, low_lev_reg, high_lev_reg) %>%
+  unique()
+```
+
+```{r}
+final_v0 %>%
+  select(country_of_residence, low_lev_reg, high_lev_reg) %>%
+  unique()
+```
+
+```{r}
+df2_low_reg <- df1 %>%
+  filter(!is.na(low_lev_reg)) %>%
+  group_by(geo, low_lev_reg, date) %>%
+  summarise(v_low = sum(v_adj, na.rm = TRUE), .groups = "drop") %>%
+  ungroup()
+```
+
+```{r}
+df2_high_reg <- df1 %>%
+  filter(!is.na(high_lev_reg)) %>%
+  group_by(geo, high_lev_reg, date) %>%
+  summarise(v_high = sum(v_adj, na.rm = TRUE), .groups = "drop") %>%
+  ungroup()
+```
+
+```{r}
+df2_ovs <- df1 %>%
+  filter(!is.na(high_lev_reg)) %>%
+  group_by(geo, date) %>%
+  summarise(v_ovs = sum(v_adj, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Residents of countries other than the United States of America entering Canada")
+```
+
+```{r}
+df2_tot <- df1 %>%
+  group_by(geo, date) %>%
+  summarise(v_tot = sum(v_adj, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Non-resident visitors entering Canada")
+```
+
+#merge multiple provinces visits result to original data frame
+```{r}
+# final_v <- final_v0 %>%
+#   left_join(df1, by = c("geo", "country_of_residence" = "low_lev_reg", "date")) %>%
+#   left_join(df2_low_reg, by = c("geo", "country_of_residence" = "low_lev_reg", "date")) %>%
+#   left_join(df2_high_reg, by = c("geo", "country_of_residence" = "high_lev_reg", "date")) %>%
+#   left_join(df2_ovs, by = c("geo", "country_of_residence", "date")) %>%
+#   left_join(df2_tot, by = c("geo", "country_of_residence", "date")) %>%
+#   mutate(v2 = case_when(!(country_of_residence %in% final_v0$low_lev_reg) & !(country_of_residence %in% final_v0$high_lev_reg) & !(country_of_residence %in% c("Non-resident visitors entering Canada", "Residents of countries other than the United States of America entering Canada")) ~ v_adj,
+#                         country_of_residence %in% final_v0$low_lev_reg ~ v_low,
+#                         country_of_residence %in% final_v0$high_lev_reg ~ v_high,
+#                         country_of_residence == "Residents of countries other than the United States of America entering Canada" ~ v_ovs,
+#                         country_of_residence == "Non-resident visitors entering Canada" ~ v_tot,
+#                         TRUE ~ NA))
+  
+```
+
+```{r}
+
+```
+
+
