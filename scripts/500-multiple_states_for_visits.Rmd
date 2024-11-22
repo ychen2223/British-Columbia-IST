@@ -38,14 +38,9 @@ df1 <- final_v0 %>%
                                TRUE ~ multi_pro),
          v_adj = v*multi_pro) %>%
   filter(!(country_of_residence %in% final_v0$low_lev_reg) & !(country_of_residence %in% final_v0$high_lev_reg) & !(country_of_residence %in% c("Non-resident visitors entering Canada", "Residents of countries other than the United States of America entering Canada"))) %>%
-  select(-c(multi_pro))
+  select(-c(multi_pro, v))
 ```
 
-```{r}
-df1 %>%
-  select(country_of_residence, multi_pro) %>%
-  unique()
-```
 
 ```{r}
 df1 %>%
@@ -62,55 +57,91 @@ final_v0 %>%
 ```{r}
 df2_low_reg <- df1 %>%
   filter(!is.na(low_lev_reg)) %>%
-  group_by(geo, low_lev_reg, date) %>%
+  group_by(geo, low_lev_reg, high_lev_reg, date) %>%
   summarise(v_low = sum(v_adj, na.rm = TRUE), .groups = "drop") %>%
   ungroup()
 ```
 
 ```{r}
-df2_high_reg <- df1 %>%
-  filter(!is.na(high_lev_reg)) %>%
+df2_high_reg <- df2_low_reg %>%
   group_by(geo, high_lev_reg, date) %>%
-  summarise(v_high = sum(v_adj, na.rm = TRUE), .groups = "drop") %>%
+  summarise(v_high = sum(v_low, na.rm = TRUE), .groups = "drop") %>%
   ungroup()
 ```
 
 ```{r}
-df2_ovs <- df1 %>%
-  filter(!is.na(high_lev_reg)) %>%
+df2_ovs <- df2_high_reg %>%
   group_by(geo, date) %>%
-  summarise(v_ovs = sum(v_adj, na.rm = TRUE), .groups = "drop") %>%
+  summarise(v_ovs = sum(v_high, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
   mutate(country_of_residence = "Residents of countries other than the United States of America entering Canada")
 ```
 
 ```{r}
 df2_tot <- df1 %>%
+  filter(orig_code == "USA") %>%
+  select(geo, country_of_residence, date, v_ovs = v_adj) %>%
+  rbind(df2_ovs) %>%
   group_by(geo, date) %>%
-  summarise(v_tot = sum(v_adj, na.rm = TRUE), .groups = "drop") %>%
+  summarise(v_tot = sum(v_ovs, na.rm = TRUE), .groups = "drop") %>%
   ungroup() %>%
   mutate(country_of_residence = "Non-resident visitors entering Canada")
 ```
 
 #merge multiple provinces visits result to original data frame
 ```{r}
-# final_v <- final_v0 %>%
-#   left_join(df1, by = c("geo", "country_of_residence" = "low_lev_reg", "date")) %>%
-#   left_join(df2_low_reg, by = c("geo", "country_of_residence" = "low_lev_reg", "date")) %>%
-#   left_join(df2_high_reg, by = c("geo", "country_of_residence" = "high_lev_reg", "date")) %>%
-#   left_join(df2_ovs, by = c("geo", "country_of_residence", "date")) %>%
-#   left_join(df2_tot, by = c("geo", "country_of_residence", "date")) %>%
-#   mutate(v2 = case_when(!(country_of_residence %in% final_v0$low_lev_reg) & !(country_of_residence %in% final_v0$high_lev_reg) & !(country_of_residence %in% c("Non-resident visitors entering Canada", "Residents of countries other than the United States of America entering Canada")) ~ v_adj,
-#                         country_of_residence %in% final_v0$low_lev_reg ~ v_low,
-#                         country_of_residence %in% final_v0$high_lev_reg ~ v_high,
-#                         country_of_residence == "Residents of countries other than the United States of America entering Canada" ~ v_ovs,
-#                         country_of_residence == "Non-resident visitors entering Canada" ~ v_tot,
-#                         TRUE ~ NA))
+df3 <- final_v0 %>%
+  left_join(df1, by = c("geo", "orig_code", "country_of_residence","low_lev_reg", "high_lev_reg", "date")) %>%
+  left_join(df2_low_reg, by = c("geo", "country_of_residence" = "low_lev_reg", "high_lev_reg", "date")) %>%
+  left_join(df2_high_reg, by = c("geo", "country_of_residence" = "high_lev_reg", "date")) %>%
+  left_join(df2_ovs, by = c("geo", "country_of_residence", "date")) %>%
+  left_join(df2_tot, by = c("geo", "country_of_residence", "date")) %>%
+  mutate(v2 = case_when(!(country_of_residence %in% final_v0$low_lev_reg) & !(country_of_residence %in% final_v0$high_lev_reg) & !(country_of_residence %in% c("Non-resident visitors entering Canada", "Residents of countries other than the United States of America entering Canada")) ~ v_adj,
+                        country_of_residence %in% final_v0$low_lev_reg ~ v_low,
+                        country_of_residence %in% final_v0$high_lev_reg ~ v_high,
+                        country_of_residence == "Residents of countries other than the United States of America entering Canada" ~ v_ovs,
+                        country_of_residence == "Non-resident visitors entering Canada" ~ v_tot,
+                        TRUE ~ NA),
+         diff = v2/v) %>%    #diff is to check the multiple provinces visits result
+  select(geo, orig_code, country_of_residence ,low_lev_reg ,high_lev_reg ,date, v = v2)
   
 ```
 
 ```{r}
+df3_can <- df3 %>%
+  filter(geo != "Canada") %>%
+  group_by(country_of_residence, date) %>%
+  summarise(v_can = sum(v, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(geo = "Canada")
+```
 
+
+```{r}
+final_v <- df3 %>%
+  left_join(df3_can, by = c("geo", "country_of_residence", "date")) %>%
+  mutate(v = case_when(!is.na(v_can) ~ v_can,
+                       TRUE ~ v)) %>%
+  select(-v_can)
+```
+
+```{r}
+check_can <- final_v %>%
+  filter(geo != "Canada") %>%
+  group_by(country_of_residence, date) %>%
+  summarise(v_can = sum(v, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(geo = "Canada") %>%
+  left_join(select(final_v, geo, country_of_residence, date, v), by = c("geo", "country_of_residence", "date")) %>%
+  mutate(v_diff = v_can - v)
+  
+```
+
+
+#our initial delivery to client
+```{r}
+write_rds(final_v, here(path(path_te_shared, path_output),"deliver", "final_v.rds"))
+write.csv(final_v, here(path(path_te_shared, path_output),"deliver", "final_v.csv"))
 ```
 
 

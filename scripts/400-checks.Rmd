@@ -412,7 +412,7 @@ final_v0 <- final_df_v_process1 %>%
   rename(v = value) %>%
   mutate(country_of_residence = ifelse(country_of_residence == "Türkiye", "Turkiye", country_of_residence))
 
-final_s <- final_df_s %>%
+final_s0 <- final_df_s %>%
   rename(country_of_residence = area_of_residence, 
          s = s_forecast,
          spend_per = revised_spend_per) %>%
@@ -431,8 +431,8 @@ s_ref <- reg_def2 %>%
 write_rds(final_v0, here(path(path_te_shared, path_output),"deliver/archived", "final_v0.rds"))
 write.csv(final_v0, here(path(path_te_shared, path_output),"deliver/archived", "final_v0.csv"))
 
-write_rds(final_s, here(path(path_te_shared, path_output),"deliver", "final_s.rds"))
-write.csv(final_s, here(path(path_te_shared, path_output),"deliver", "final_s.csv"))
+write_rds(final_s0, here(path(path_te_shared, path_output),"deliver/archived", "final_s0.rds"))
+write.csv(final_s0, here(path(path_te_shared, path_output),"deliver/archived", "final_s0.csv"))
 
 write.csv(v_ref, here(path(path_te_shared, path_output),"deliver", "v_ref.csv"))
 write.csv(s_ref, here(path(path_te_shared, path_output),"deliver", "s_ref.csv"))

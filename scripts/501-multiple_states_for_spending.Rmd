@@ -1,0 +1,195 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(here)
+library(fs)
+library(readxl)
+
+source(here("scripts", "set_vars.R"))
+# options(scipen=999)
+```
+
+```{r}
+final_v<- read_rds(here(path(path_te_shared, path_output),"deliver", "final_v.rds"))
+final_v0 <- read_rds(here(path(path_te_shared, path_output),"deliver/archived", "final_v0.rds"))
+final_s0 <- read_rds(here(path(path_te_shared, path_output),"deliver/archived", "final_s0.rds"))
+```
+
+
+#prepare visits
+
+```{r}
+#Add Antarctica and Adjacent Islands, Iran and rest of southern Asia
+list1 <- c("United States of America residents entering Canada", "Brazil", "Caribbean", "Mexico", "Belgium", "France", "Germany", "Italy", "Netherlands", "Denmark", "Finland", "Iceland", "Norway", "Sweden", "Switzerland", "United Kingdom", "Northern Africa", "Australia", "China", "Hong Kong", "India", "Japan", "New Zealand", "Iran", "Rest of Southern Asia", "Americas, countries other than the United States of America", "Europe", "Africa", "Asia", "Oceania", "Antarctica and Adjacent Islands")
+
+list2 <- c("United States of America residents entering Canada", "Brazil", "Caribbean", "Mexico", "Belgium", "France", "Germany", "Italy", "Netherlands", "Switzerland", "United Kingdom", "Northern Africa", "Australia", "China", "Hong Kong", "India", "Japan", "New Zealand") # took out scandinavia and southern Asia
+```
+
+```{r}
+org_ctry <- final_v0 %>%
+  filter(country_of_residence %in% list1) %>%
+  select(geo, country_of_residence, date, value = v)
+
+scan <- org_ctry %>%
+  filter(country_of_residence %in% c("Denmark", "Finland", "Iceland", "Norway", "Sweden")) %>%
+  group_by(geo, date) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Scandinavia", .after = geo)
+
+sas <- org_ctry %>%
+  filter(country_of_residence %in% c("Iran", "Rest of Southern Asia")) %>%
+  group_by(geo, date) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Southern Asia", .after = geo)
+
+
+rest_ame <- org_ctry %>%
+  filter(country_of_residence %in% c("Brazil", "Caribbean", "Mexico")) %>%
+  group_by(geo, date) %>%
+  summarise(value_sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(org_ctry %>% filter(country_of_residence == "Americas, countries other than the United States of America"), by = c("geo", "date")) %>%
+  mutate(country_of_residence = "Americas, countries other than the United States of America - other countries",
+         value_rest = value - value_sum) %>%
+  select(geo, country_of_residence, date, value = value_rest)
+
+rest_eur <- org_ctry %>%
+  filter(country_of_residence %in% c("Belgium", "France", "Germany", "Italy", "Netherlands", "Denmark", "Finland", "Iceland", "Norway", "Sweden", "Switzerland", "United Kingdom")) %>%
+  group_by(geo, date) %>%
+  summarise(value_sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(org_ctry %>% filter(country_of_residence == "Europe"), by = c("geo", "date")) %>%
+  mutate(country_of_residence = "Europe - other countries",
+         value_rest = value - value_sum) %>%
+  select(geo, country_of_residence, date, value = value_rest)
+
+rest_afr <- org_ctry %>%
+  filter(country_of_residence %in% c("Northern Africa")) %>%
+  rename(value_sum = value) %>%
+  left_join(org_ctry %>% filter(country_of_residence == "Africa"), by = c("geo", "date")) %>%
+  mutate(country_of_residence = "Africa - other countries",
+         value_rest = value - value_sum) %>%
+  select(geo, country_of_residence, date, value = value_rest)
+
+#Asia and Oceania
+rest_as <- org_ctry %>%
+  filter(country_of_residence %in% c("Australia", "China", "Hong Kong", "India", "Japan", "New Zealand", "Iran", "Rest of Southern Asia")) %>%
+  group_by(geo, date) %>%
+  summarise(value_sum = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  ungroup() %>%
+  left_join(org_ctry %>% 
+              filter(country_of_residence %in% c("Asia", "Oceania")) %>%
+              group_by(geo, date) %>%
+              summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+              ungroup()
+            , by = c("geo", "date")) %>%
+  mutate(country_of_residence = "Asia and Oceania - other countries",
+         value_rest = value - value_sum) %>%
+  select(geo, country_of_residence, date, value = value_rest)
+
+#Antarctica and Adjacent Islands
+rest_at <- org_ctry %>%
+  filter(country_of_residence == "Antarctica and Adjacent Islands") %>%
+  mutate(country_of_residence = "Antarctica and Adjacent Islands - other countries")
+
+#NES country
+nes_ctry <- org_ctry %>%
+  filter(country_of_residence == "Antarctica and Adjacent Islands") %>%
+  mutate(country_of_residence = "Not elsewhere specified-country",
+         value = 0)
+nes_ctry2 <- org_ctry %>%
+  filter(country_of_residence == "Antarctica and Adjacent Islands") %>%
+  mutate(country_of_residence = "Not elsewhere specified-country in Americas, countries other than the United States of America",
+         value = 0)
+nes_ctry3 <- org_ctry %>%
+  filter(country_of_residence == "Antarctica and Adjacent Islands") %>%
+  mutate(country_of_residence = "Not elsewhere specified-country in Europe",
+         value = 0)
+nes_ctry4 <- org_ctry %>%
+  filter(country_of_residence == "Antarctica and Adjacent Islands") %>%
+  mutate(country_of_residence = "Not elsewhere specified-country in Africa",
+         value = 0)
+nes_ctry5 <- org_ctry %>%
+  filter(country_of_residence == "Antarctica and Adjacent Islands") %>%
+  mutate(country_of_residence = "Not elsewhere specified-country in Asia and Oceania",
+         value = 0)
+nes_reg <- org_ctry %>%
+  filter(country_of_residence == "Antarctica and Adjacent Islands") %>%
+  mutate(country_of_residence = "Not elsewhere specified-region",
+         value = 0)
+
+final_org_ctry_v <- final_v0 %>%
+  filter(country_of_residence %in% list2) %>%
+  select(geo, country_of_residence, date, value = v) %>%
+  rbind(scan, sas, rest_ame, rest_eur, rest_afr, rest_as, rest_at, nes_ctry, nes_ctry2, nes_ctry3, nes_ctry4, nes_ctry5, nes_reg) %>%
+  rename(v = value) %>%
+  mutate(country_of_residence = ifelse(country_of_residence == "United States of America residents entering Canada", "United States of America residents, tourists (overnight)", country_of_residence))
+
+final_org_ctry_v_3_pro <- final_org_ctry_v %>%
+  filter(geo %in% c("Yukon", "Northwest Territories", "Nunavut")) %>%
+  group_by(country_of_residence, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(geo = "Yukon, Northwest Territories and Nunavut")
+
+nes_pro <- final_org_ctry_v_3_pro %>%
+  mutate(geo = "Not specified province",
+         v = 0)
+
+final_org_ctry_v2 <- final_org_ctry_v %>%
+  filter(!(geo %in% c("Yukon", "Northwest Territories", "Nunavut"))) %>%
+  rbind(final_org_ctry_v_3_pro, nes_pro)
+```
+
+```{r}
+reg_def2 <- data.frame(s_ttl= c("Not elsewhere specified-country in Americas, countries other than the United States of America", "Americas, countries other than the United States of America - other countries", "Mexico", "Caribbean", "Brazil", "Europe - other countries", "Belgium", "France", "Germany", "Netherlands", "Switzerland", "Scandinavia", "United Kingdom", "Italy", "Not elsewhere specified-country in Europe", "Africa - other countries", "Northern Africa", "Not elsewhere specified-country in Africa", "Asia and Oceania - other countries", "China", "Hong Kong", "Japan", "Southern Asia", "India", "Australia", "New Zealand","Not elsewhere specified-country in Asia and Oceania", "Antarctica and Adjacent Islands - other countries", "Not elsewhere specified-country"),
+                             s_high_lev_reg=c("Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Americas, countries other than the United States of America", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Europe", "Africa", "Africa", "Africa", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Asia and Oceania", "Antarctica and Adjacent Islands", "Not elsewhere specified-region"))
+```
+
+#aggregate region
+```{r}
+final_org_ctry_v2_reg <- final_org_ctry_v2 %>%
+  left_join(reg_def2, by = c("country_of_residence" = "s_ttl")) %>%
+  filter(country_of_residence != "United States of America residents, tourists (overnight)") %>%
+  group_by(geo, s_high_lev_reg, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),.groups = "drop") %>%
+  ungroup() %>%
+  rename(country_of_residence = s_high_lev_reg)
+
+final_org_ctry_v2_ovs <- final_org_ctry_v2 %>%
+  filter(country_of_residence != "United States of America residents, tourists (overnight)") %>%
+  group_by(geo, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),.groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Residents of countries other than the United States of America", .after = geo)
+
+final_org_ctry_v2_tot <- final_org_ctry_v2 %>%
+  group_by(geo, date) %>%
+  summarise(v = sum(v, na.rm = TRUE),.groups = "drop") %>%
+  ungroup() %>%
+  mutate(country_of_residence = "Non-resident visitors to Canada", .after = geo)
+```
+
+```{r}
+final_org_ctry_v3 <- final_org_ctry_v2 %>%
+  rbind(final_org_ctry_v2_reg, final_org_ctry_v2_ovs, final_org_ctry_v2_tot)
+  # mutate(v = case_when(geo == "Not specified province" | country_of_residence %in% c("Not elsewhere specified-country", "Not elsewhere specified-country in Africa", "Not elsewhere specified-country in Americas, countries other than the United States of America", "Not elsewhere specified-country in Asia and Oceania", "Not elsewhere specified-country in Europe", "Not elsewhere specified-region") ~ 0,
+  #                      TRUE ~ v))
+```
+
+```{r}
+check_v <- final_s0 %>%
+  left_join(final_org_ctry_v3, by = c("geo", "country_of_residence", "date")) %>%
+  mutate(v_diff = v.y - v.x)
+```
+
