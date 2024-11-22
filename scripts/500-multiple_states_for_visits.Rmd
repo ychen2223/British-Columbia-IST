@@ -138,7 +138,7 @@ check_can <- final_v %>%
 ```
 
 
-#our initial delivery to client
+#our revised delivery to client
 ```{r}
 write_rds(final_v, here(path(path_te_shared, path_output),"deliver", "final_v.rds"))
 write.csv(final_v, here(path(path_te_shared, path_output),"deliver", "final_v.csv"))
