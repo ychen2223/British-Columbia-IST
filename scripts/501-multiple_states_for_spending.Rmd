@@ -201,7 +201,8 @@ check_v3 <- check_v %>%
 final_s <- final_s0 %>%
   left_join(select(final_org_ctry_v3, geo, country_of_residence, date, v_adj = v), by = c("geo", "country_of_residence", "date")) %>%
   mutate(spend_per_adj = s/v_adj*1000,
-         spend_per_adj = ifelse(is.na(spend_per_adj) | is.infinite(spend_per_adj), 0, spend_per_adj))
+         spend_per_adj = ifelse(is.na(spend_per_adj) | is.infinite(spend_per_adj), 0, spend_per_adj)) %>%
+  select(geo, country_of_residence, date, v = v_adj, s, spend_per = spend_per_adj)
 ```
 
 #our revised delivery to client
