@@ -216,6 +216,25 @@ check_6 <- final_v %>%
 ```
 
 
+#multiple provinces visits factor
+```{r}
+#ctry
+final_multi_pro1 <- check_v %>%
+  filter(geo == "Canada" & orig_code %in% c("AUS", "CHN", "FRA", "DEU", "JPN", "KOR", "MEX", "GBR", "USA")) %>%
+  select(geo, orig_code, country_of_residence, gap_v) %>%
+  distinct()
+
+#tot
+final_multi_pro2 <- check_v %>%
+  filter(geo == "Canada" & country_of_residence == "Non-resident visitors entering Canada") %>%
+  select(geo, orig_code, date, country_of_residence, gap_v)
+
+#rest of the world
+final_multi_pro3 <- check_v %>%
+  filter(geo == "Canada" & !(orig_code %in% c("AUS", "CHN", "FRA", "DEU", "JPN", "KOR", "MEX", "GBR", "USA")) & !(country_of_residence %in% unique(final_v$low_lev_reg)) & !(country_of_residence %in% unique(final_v$high_lev_reg)) & country_of_residence != "Non-resident visitors entering Canada" & country_of_residence != "Residents of countries other than the United States of America entering Canada" ) %>%
+  select(geo, orig_code, date, country_of_residence, gap_v)
+```
+
 
 
 
