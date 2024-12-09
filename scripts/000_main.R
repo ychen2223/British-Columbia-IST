@@ -25,4 +25,6 @@ rmarkdown::render("scripts/310-new_spend_forecast.Rmd")
 # 4. Compare, forecast and revise NV
 #################
 rmarkdown::render("scripts/400-checks.Rmd")
-
+rmarkdown::render("scripts/500-multiple_states_for_visits.Rmd")
+rmarkdown::render("scripts/501-multiple_states_for_spending.Rmd")
+rmarkdown::render("scripts/502-checks2.Rmd")
