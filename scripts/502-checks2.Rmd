@@ -28,6 +28,10 @@ final_s0<- read_rds(here(path(path_te_shared, path_output),"deliver/archived", "
 ctry_def2<- read_rds(here("output_data", "ctry_def2.rds"))
 ctry_def3<- read_rds(here("output_data", "ctry_def3.rds"))
 reg_def <- read_rds(here("output_data", "reg_def.rds"))
+
+#current gts for Canada
+gts_current_ctry_NES <- read_rds(here("output_data", "gts_current_ctry_NES.rds")) 
+
 ```
 
 #check diff visits
@@ -218,7 +222,7 @@ check_6 <- final_v %>%
 
 #multiple provinces visits factor
 ```{r}
-#ctry
+#ctry, the countries filter are the ones have existing multi-pro visits number from VTS & Frontier
 final_multi_pro1 <- check_v %>%
   filter(geo == "Canada" & orig_code %in% c("AUS", "CHN", "FRA", "DEU", "JPN", "KOR", "MEX", "GBR", "USA")) %>%
   select(geo, orig_code, country_of_residence, gap_v) %>%
@@ -235,6 +239,29 @@ final_multi_pro3 <- check_v %>%
   select(geo, orig_code, date, country_of_residence, gap_v)
 ```
 
+#multiple provinces visits factor-spending
+
+```{r}
+gts_s <- gts_current_ctry_NES %>%
+  filter(variable == "s") %>%
+  mutate(orig_ttl = ifelse(orig_code == "USA","United States of America residents, tourists (overnight)",orig_ttl))
+
+gts_s_tot <- gts_s %>%
+  group_by(loc_ttl, loc_code, date, variable) %>%
+  summarise(value = sum(value, na.rm = TRUE),
+            .groups = "drop") %>%
+  ungroup() %>%
+  mutate(orig_ttl = "Non-resident visitors to Canada", orig_code = "TOT")
+
+gts_s2 <- gts_s %>%
+  rbind(gts_s_tot)
+
+#China is very different, France lower than VTS, US higher than VTS
+final_multi_pro_s <- final_s %>%
+  filter(geo == "Canada") %>%
+  left_join(gts_s2, by = c("geo" = "loc_ttl", "country_of_residence" = "orig_ttl", "date")) %>%
+  mutate(ratio = s/(value*1000000))
+```
 
 
 
